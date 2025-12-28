@@ -353,15 +353,22 @@ export function CostOperationForm({
               <div>
                 <Label htmlFor="recurringPeriod">Recurring Period *</Label>
                 <Select
-                  value={watch("recurringPeriod") || ""}
-                  onValueChange={(value: "monthly" | "weekly" | "yearly") =>
-                    setValue("recurringPeriod", value)
-                  }
+                  value={watch("recurringPeriod") || "none"}
+                  onValueChange={(value) => {
+                    if (value === "none") {
+                      setValue("recurringPeriod", undefined);
+                    } else {
+                      setValue("recurringPeriod", value as "monthly" | "weekly" | "yearly");
+                    }
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select recurring period" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">
+                      Select recurring period
+                    </SelectItem>
                     {recurringPeriods.map((period) => (
                       <SelectItem key={period.value} value={period.value}>
                         {period.label}

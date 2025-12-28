@@ -213,7 +213,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                     {item.children && (isActive || isExpanded) && (
                       <div className="ml-6 mt-1 space-y-1">
                         {item.children.map((child) => (
-                          <Link
+                          <a
                             key={child.name}
                             href={child.href}
                             className={cn(
@@ -225,7 +225,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                             onClick={() => setSidebarOpen(false)}
                           >
                             {child.name}
-                          </Link>
+                          </a>
                         ))}
                       </div>
                     )}
@@ -265,7 +265,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </div>
 
       {/* Main content */}
-      <div className="-mt-50 w-full">
+      <div className=" w-full">
         {/* Mobile header */}
         <div className="sticky top-0 z-40 flex h-16 items-center gap-x-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 shadow-sm sm:gap-x-6 sm:px-6 lg:hidden">
           <Button
