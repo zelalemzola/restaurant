@@ -10,7 +10,7 @@ const client = new MongoClient(
 export const auth = betterAuth({
   database: mongodbAdapter(client.db("restaurant-erp")),
   secret: process.env.BETTER_AUTH_SECRET!,
-  baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
+  baseURL: process.env.BETTER_AUTH_URL || "https://restaurant-lime-nu-21.vercel.app/",
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
@@ -52,7 +52,7 @@ export const auth = betterAuth({
       },
     },
   },
-  trustedOrigins: [process.env.BETTER_AUTH_URL || "http://localhost:3000"],
+  trustedOrigins: [process.env.BETTER_AUTH_URL || "https://restaurant-lime-nu-21.vercel.app/"],
 });
 
 export type Session = typeof auth.$Infer.Session.session & {
