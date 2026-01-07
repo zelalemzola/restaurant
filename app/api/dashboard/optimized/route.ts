@@ -73,7 +73,7 @@ async function getDashboardData() {
       .exec(),
 
     // Unread notifications count
-    Notification.countDocuments({ isRead: false }).exec(),
+    Notification.countDocuments({ read: false }).exec(),
 
     // Total products count
     Product.countDocuments().exec(),

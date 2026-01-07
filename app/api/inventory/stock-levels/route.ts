@@ -50,16 +50,16 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const skip = (page - 1) * limit;
 
-    // Build query - only include stock and combination items for inventory tracking
+    // Build query - include all product types that have stock tracking enabled
     const query: any = {
-      type: { $in: ["stock", "combination"] },
+      stockTrackingEnabled: { $ne: false }, // Include products where stockTrackingEnabled is true or undefined (default)
     };
 
     if (search) {
       query.name = { $regex: search, $options: "i" };
     }
 
-    if (type && ["stock", "combination"].includes(type)) {
+    if (type && ["stock", "sellable", "combination"].includes(type)) {
       query.type = type;
     }
 
@@ -122,9 +122,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Get summary statistics
+    // Get summary statistics for all product types with stock tracking enabled
     const summaryStats = await Product.aggregate([
-      { $match: { type: { $in: ["stock", "combination"] } } },
+      { $match: { stockTrackingEnabled: { $ne: false } } }, // Include products with stock tracking enabled
       {
         $group: {
           _id: null,

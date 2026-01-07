@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LoadingTable } from "@/components/ui/loading";
-import { ErrorFallback } from "@/components/ui/error-boundary";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ChevronDown, ChevronUp, Search, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -64,9 +64,9 @@ export function ResponsiveTable<T extends Record<string, any>>({
   // Filter data based on search term
   const filteredData = React.useMemo(() => {
     if (!searchTerm) return data;
-    
-    return data.filter(item =>
-      columns.some(column => {
+
+    return data.filter((item) =>
+      columns.some((column) => {
         if (!column.searchable) return false;
         const value = item[column.key as keyof T];
         return String(value).toLowerCase().includes(searchTerm.toLowerCase());
@@ -95,8 +95,8 @@ export function ResponsiveTable<T extends Record<string, any>>({
   // Handle sort
   const handleSort = (key: string) => {
     if (!sortable) return;
-    
-    setSortConfig(current => {
+
+    setSortConfig((current) => {
       if (current?.key === key) {
         return {
           key,
@@ -111,7 +111,7 @@ export function ResponsiveTable<T extends Record<string, any>>({
   const getResponsiveClasses = () => {
     const breakpoints = {
       sm: "sm:table",
-      md: "md:table", 
+      md: "md:table",
       lg: "lg:table",
     };
     return `hidden ${breakpoints[mobileBreakpoint]}`;
@@ -121,12 +121,15 @@ export function ResponsiveTable<T extends Record<string, any>>({
     return (
       <Card className={className}>
         <CardContent className="p-6">
-          <ErrorFallback
-            error={error}
-            resetError={() => window.location.reload()}
-            title="Failed to load data"
-            compact
-          />
+          <div className="p-4 border border-red-200 rounded-md bg-red-50">
+            <p className="text-red-800">{error.message}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
         </CardContent>
       </Card>
     );
@@ -140,7 +143,9 @@ export function ResponsiveTable<T extends Record<string, any>>({
             <div>
               {title && <CardTitle>{title}</CardTitle>}
               {description && (
-                <p className="text-sm text-muted-foreground mt-1">{description}</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {description}
+                </p>
               )}
             </div>
             {searchable && (
@@ -179,10 +184,14 @@ export function ResponsiveTable<T extends Record<string, any>>({
                         key={String(column.key)}
                         className={cn(
                           "px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider",
-                          column.sortable && sortable && "cursor-pointer hover:text-foreground",
+                          column.sortable &&
+                            sortable &&
+                            "cursor-pointer hover:text-foreground",
                           column.className
                         )}
-                        onClick={() => column.sortable && handleSort(String(column.key))}
+                        onClick={() =>
+                          column.sortable && handleSort(String(column.key))
+                        }
                       >
                         <div className="flex items-center space-x-1">
                           <span>{column.header}</span>
@@ -191,7 +200,8 @@ export function ResponsiveTable<T extends Record<string, any>>({
                               <ChevronUp
                                 className={cn(
                                   "h-3 w-3",
-                                  sortConfig?.key === column.key && sortConfig.direction === "asc"
+                                  sortConfig?.key === column.key &&
+                                    sortConfig.direction === "asc"
                                     ? "text-foreground"
                                     : "text-muted-foreground/50"
                                 )}
@@ -199,7 +209,8 @@ export function ResponsiveTable<T extends Record<string, any>>({
                               <ChevronDown
                                 className={cn(
                                   "h-3 w-3 -mt-1",
-                                  sortConfig?.key === column.key && sortConfig.direction === "desc"
+                                  sortConfig?.key === column.key &&
+                                    sortConfig.direction === "desc"
                                     ? "text-foreground"
                                     : "text-muted-foreground/50"
                                 )}
@@ -226,9 +237,14 @@ export function ResponsiveTable<T extends Record<string, any>>({
                         return (
                           <td
                             key={String(column.key)}
-                            className={cn("px-6 py-4 whitespace-nowrap text-sm", column.className)}
+                            className={cn(
+                              "px-6 py-4 whitespace-nowrap text-sm",
+                              column.className
+                            )}
                           >
-                            {column.render ? column.render(item, value) : String(value || "")}
+                            {column.render
+                              ? column.render(item, value)
+                              : String(value || "")}
                           </td>
                         );
                       })}
@@ -239,7 +255,14 @@ export function ResponsiveTable<T extends Record<string, any>>({
             </div>
 
             {/* Mobile Card View */}
-            <div className={cn("block", getResponsiveClasses().replace("hidden", "").replace("table", "hidden"))}>
+            <div
+              className={cn(
+                "block",
+                getResponsiveClasses()
+                  .replace("hidden", "")
+                  .replace("table", "hidden")
+              )}
+            >
               <div className="divide-y divide-border">
                 {sortedData.map((item, index) => (
                   <div
@@ -254,14 +277,19 @@ export function ResponsiveTable<T extends Record<string, any>>({
                       {columns.map((column) => {
                         const value = item[column.key as keyof T];
                         if (!value && value !== 0) return null;
-                        
+
                         return (
-                          <div key={String(column.key)} className="flex justify-between items-start">
+                          <div
+                            key={String(column.key)}
+                            className="flex justify-between items-start"
+                          >
                             <span className="text-sm font-medium text-muted-foreground">
                               {column.mobileLabel || column.header}:
                             </span>
                             <span className="text-sm text-right flex-1 ml-2">
-                              {column.render ? column.render(item, value) : String(value)}
+                              {column.render
+                                ? column.render(item, value)
+                                : String(value)}
                             </span>
                           </div>
                         );
@@ -278,9 +306,12 @@ export function ResponsiveTable<T extends Record<string, any>>({
         {pagination && sortedData.length > 0 && (
           <div className="flex items-center justify-between px-6 py-4 border-t">
             <div className="text-sm text-muted-foreground">
-              Showing {((pagination.page - 1) * pagination.pageSize) + 1} to{" "}
-              {Math.min(pagination.page * pagination.pageSize, pagination.total)} of{" "}
-              {pagination.total} results
+              Showing {(pagination.page - 1) * pagination.pageSize + 1} to{" "}
+              {Math.min(
+                pagination.page * pagination.pageSize,
+                pagination.total
+              )}{" "}
+              of {pagination.total} results
             </div>
             <div className="flex items-center space-x-2">
               <Button
@@ -295,7 +326,9 @@ export function ResponsiveTable<T extends Record<string, any>>({
                 variant="outline"
                 size="sm"
                 onClick={() => pagination.onPageChange(pagination.page + 1)}
-                disabled={pagination.page * pagination.pageSize >= pagination.total}
+                disabled={
+                  pagination.page * pagination.pageSize >= pagination.total
+                }
               >
                 Next
               </Button>

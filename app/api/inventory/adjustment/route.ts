@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     await connectDB();
 
-    // Verify product exists and is a stock or combination item
+    // Verify product exists and has stock tracking enabled
     const product = await Product.findById(productId);
     if (!product) {
       const response: ApiResponse<never> = {
@@ -53,13 +53,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 404 });
     }
 
-    if (!["stock", "combination"].includes(product.type)) {
+    // Check if stock tracking is enabled for this product
+    if (product.stockTrackingEnabled === false) {
       const response: ApiResponse<never> = {
         success: false,
         error: {
-          code: "INVALID_PRODUCT_TYPE",
-          message:
-            "Stock adjustments can only be made for stock or combination items",
+          code: "STOCK_TRACKING_DISABLED",
+          message: "Stock tracking is disabled for this product",
         },
       };
       return NextResponse.json(response, { status: 400 });

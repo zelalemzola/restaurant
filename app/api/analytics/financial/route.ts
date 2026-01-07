@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import SalesTransaction from "@/lib/models/SalesTransaction";
 import CostOperation from "@/lib/models/CostOperation";
+import CostExpense from "@/lib/models/CostExpense";
 import Product from "@/lib/models/Product";
 
 export async function GET(request: NextRequest) {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     const totalRevenue = revenueResult[0]?.totalRevenue || 0;
 
-    // Get total costs
+    // Get total costs from cost operations
     const costsResult = await CostOperation.aggregate([
       {
         $match: {
@@ -55,12 +56,33 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    const totalCosts = costsResult[0]?.totalCosts || 0;
+    const operationalCosts = costsResult[0]?.totalCosts || 0;
+
+    // Get total costs from inventory expenses
+    const inventoryExpensesResult = await CostExpense.aggregate([
+      {
+        $match: {
+          recordedAt: { $gte: queryStartDate, $lte: queryEndDate },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalInventoryExpenses: { $sum: "$totalAmount" },
+        },
+      },
+    ]);
+
+    const inventoryExpenses =
+      inventoryExpensesResult[0]?.totalInventoryExpenses || 0;
+
+    // Calculate total costs (operational + inventory)
+    const totalCosts = operationalCosts + inventoryExpenses;
 
     // Calculate net profit
     const netProfit = totalRevenue - totalCosts;
 
-    // Get cost breakdown by category
+    // Get cost breakdown by category (operational costs)
     const costBreakdown = await CostOperation.aggregate([
       {
         $match: {
@@ -82,10 +104,41 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    // Convert to object format
+    // Get inventory cost breakdown by category
+    const inventoryBreakdown = await CostExpense.aggregate([
+      {
+        $match: {
+          recordedAt: { $gte: queryStartDate, $lte: queryEndDate },
+        },
+      },
+      {
+        $group: {
+          _id: "$category",
+          amount: { $sum: "$totalAmount" },
+        },
+      },
+      {
+        $project: {
+          category: "$_id",
+          amount: 1,
+          _id: 0,
+        },
+      },
+    ]);
+
+    // Convert to object format and combine both cost types
     const costBreakdownObj: Record<string, number> = {};
+
+    // Add operational costs
     costBreakdown.forEach((item) => {
-      costBreakdownObj[item.category] = item.amount;
+      const category = `operational_${item.category}`;
+      costBreakdownObj[category] = item.amount;
+    });
+
+    // Add inventory costs
+    inventoryBreakdown.forEach((item) => {
+      const category = `inventory_${item.category}`;
+      costBreakdownObj[category] = item.amount;
     });
 
     // Get product profitability for combination items
@@ -138,6 +191,8 @@ export async function GET(request: NextRequest) {
         summary: {
           totalRevenue,
           totalCosts,
+          operationalCosts,
+          inventoryExpenses,
           netProfit,
         },
         costBreakdown: costBreakdownObj,

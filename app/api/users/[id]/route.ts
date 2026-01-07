@@ -36,10 +36,48 @@ interface ApiSuccess<T> {
 
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
+// Unified user lookup function that handles both Better Auth 'id' and MongoDB '_id' formats
+async function findUserByAnyId(db: any, id: string) {
+  console.log(`Looking up user with ID: ${id}`);
+
+  let user = null;
+  let queryField = null;
+
+  // First try by Better Auth 'id' field (if it exists)
+  try {
+    user = await db.collection("user").findOne({ id: id });
+    if (user) {
+      queryField = { id: id };
+      console.log(`Found user by Better Auth 'id' field: ${id}`);
+      return { user, queryField };
+    }
+  } catch (error) {
+    console.log(`Error searching by 'id' field: ${error}`);
+  }
+
+  // If not found and ID is a valid ObjectId, try by MongoDB '_id' field
+  if (!user && mongoose.Types.ObjectId.isValid(id)) {
+    try {
+      const objectId = new mongoose.Types.ObjectId(id);
+      user = await db.collection("user").findOne({ _id: objectId });
+      if (user) {
+        queryField = { _id: objectId };
+        console.log(`Found user by MongoDB '_id' field: ${id}`);
+        return { user, queryField };
+      }
+    } catch (error) {
+      console.log(`Error searching by '_id' field: ${error}`);
+    }
+  }
+
+  console.log(`User not found with ID: ${id}`);
+  return { user: null, queryField: null };
+}
+
 // GET /api/users/[id] - Get specific user
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication and permissions
@@ -48,24 +86,16 @@ export async function GET(
     ]);
     if (error) return error;
 
-    const { id } = params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "INVALID_ID",
-            message: "Invalid user ID",
-          },
-        },
-        { status: 400 }
-      );
-    }
+    const { id } = await params;
 
     await connectDB();
 
-    const foundUser = await User.findById(id).select("-__v").lean().exec();
+    if (!mongoose.connection.db) {
+      throw new Error("Database connection not available");
+    }
+
+    const db = mongoose.connection.db;
+    const { user: foundUser } = await findUserByAnyId(db, id);
 
     if (!foundUser) {
       return NextResponse.json(
@@ -73,7 +103,11 @@ export async function GET(
           success: false,
           error: {
             code: "USER_NOT_FOUND",
-            message: "User not found",
+            message: `User not found with ID: ${id}`,
+            details: {
+              searchedId: id,
+              isValidObjectId: mongoose.Types.ObjectId.isValid(id),
+            },
           },
         },
         { status: 404 }
@@ -94,6 +128,7 @@ export async function GET(
         error: {
           code: "USER_FETCH_ERROR",
           message: "Failed to fetch user",
+          details: error instanceof Error ? error.message : "Unknown error",
         },
       },
       { status: 500 }
@@ -104,7 +139,7 @@ export async function GET(
 // PUT /api/users/[id] - Update user
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication and permissions
@@ -113,35 +148,30 @@ export async function PUT(
     ]);
     if (error) return error;
 
-    const { id } = params;
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: "INVALID_ID",
-            message: "Invalid user ID",
-          },
-        },
-        { status: 400 }
-      );
-    }
-
+    const { id } = await params;
     const body = await request.json();
     const validatedData = updateUserSchema.parse(body);
 
     await connectDB();
 
-    // Find the user
-    const existingUser = await User.findById(id);
-    if (!existingUser) {
+    if (!mongoose.connection.db) {
+      throw new Error("Database connection not available");
+    }
+
+    const db = mongoose.connection.db;
+    const { user: existingUser, queryField } = await findUserByAnyId(db, id);
+
+    if (!existingUser || !queryField) {
       return NextResponse.json(
         {
           success: false,
           error: {
             code: "USER_NOT_FOUND",
-            message: "User not found",
+            message: `User not found with ID: ${id}`,
+            details: {
+              searchedId: id,
+              isValidObjectId: mongoose.Types.ObjectId.isValid(id),
+            },
           },
         },
         { status: 404 }
@@ -149,7 +179,7 @@ export async function PUT(
     }
 
     // Update user fields
-    const updateFields: any = {};
+    const updateFields: any = { updatedAt: new Date() };
     if (validatedData.name) updateFields.name = validatedData.name;
     if (validatedData.firstName !== undefined)
       updateFields.firstName = validatedData.firstName;
@@ -157,26 +187,27 @@ export async function PUT(
       updateFields.lastName = validatedData.lastName;
     if (validatedData.role) updateFields.role = validatedData.role;
 
-    const updatedUser = await User.findByIdAndUpdate(
-      id,
-      { $set: updateFields },
-      { new: true, runValidators: true }
-    )
-      .select("-__v")
-      .lean()
-      .exec();
+    const updatedUser = await db
+      .collection("user")
+      .findOneAndUpdate(
+        queryField,
+        { $set: updateFields },
+        { returnDocument: "after" }
+      );
+
+    if (!updatedUser || !updatedUser.value) {
+      throw new Error("Failed to update user");
+    }
 
     // Update password if provided
     if (validatedData.password) {
       const hashedPassword = await bcrypt.hash(validatedData.password, 12);
 
-      const { MongoClient } = require("mongodb");
-      const client = new MongoClient(process.env.MONGODB_URI);
-      await client.connect();
-      const db = client.db("restaurant-erp");
-
-      await db.collection("account").updateOne(
-        { userId: new mongoose.Types.ObjectId(id) },
+      // Better Auth stores password in 'account' collection
+      // Use the appropriate user ID field for account lookup
+      const userIdField = existingUser.id || existingUser._id;
+      const accountUpdateResult = await db.collection("account").updateOne(
+        { userId: userIdField },
         {
           $set: {
             password: hashedPassword,
@@ -185,12 +216,26 @@ export async function PUT(
         }
       );
 
-      await client.close();
+      console.log(
+        `Password update result for user ${userIdField}:`,
+        accountUpdateResult
+      );
     }
 
-    const response: ApiResponse<typeof updatedUser> = {
+    // Also update in our User model for consistency (if it exists)
+    try {
+      await User.findOneAndUpdate(
+        { email: existingUser.email },
+        { $set: updateFields }
+      );
+    } catch (error) {
+      // Ignore if User model doesn't exist or fails
+      console.warn("Failed to update User model:", error);
+    }
+
+    const response: ApiResponse<typeof updatedUser.value> = {
       success: true,
-      data: updatedUser,
+      data: updatedUser.value,
     };
 
     return NextResponse.json(response);
@@ -202,7 +247,7 @@ export async function PUT(
           error: {
             code: "VALIDATION_ERROR",
             message: "Invalid input data",
-            details: error.errors,
+            details: error.issues,
           },
         },
         { status: 400 }
@@ -216,6 +261,7 @@ export async function PUT(
         error: {
           code: "USER_UPDATE_ERROR",
           message: "Failed to update user",
+          details: error instanceof Error ? error.message : "Unknown error",
         },
       },
       { status: 500 }
@@ -226,7 +272,7 @@ export async function PUT(
 // DELETE /api/users/[id] - Delete user
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Check authentication and permissions
@@ -235,25 +281,39 @@ export async function DELETE(
     ]);
     if (error) return error;
 
-    const { id } = params;
+    const { id } = await params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    await connectDB();
+
+    if (!mongoose.connection.db) {
+      throw new Error("Database connection not available");
+    }
+
+    const db = mongoose.connection.db;
+    const { user: existingUser, queryField } = await findUserByAnyId(db, id);
+
+    if (!existingUser || !queryField) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: "INVALID_ID",
-            message: "Invalid user ID",
+            code: "USER_NOT_FOUND",
+            message: `User not found with ID: ${id}`,
+            details: {
+              searchedId: id,
+              isValidObjectId: mongoose.Types.ObjectId.isValid(id),
+            },
           },
         },
-        { status: 400 }
+        { status: 404 }
       );
     }
 
-    await connectDB();
+    // Prevent deleting yourself - check both id formats
+    const currentUserId = (user as any).id || (user as any)._id?.toString();
+    const targetUserId = existingUser.id || existingUser._id?.toString();
 
-    // Prevent deleting yourself
-    if (user.id === id) {
+    if (currentUserId === targetUserId || currentUserId === id) {
       return NextResponse.json(
         {
           success: false,
@@ -266,37 +326,59 @@ export async function DELETE(
       );
     }
 
-    // Find and delete the user
-    const deletedUser = await User.findByIdAndDelete(id).lean().exec();
+    // Delete the user
+    const deletedUser = await db
+      .collection("user")
+      .findOneAndDelete(queryField);
 
-    if (!deletedUser) {
+    if (!deletedUser || !deletedUser.value) {
       return NextResponse.json(
         {
           success: false,
           error: {
-            code: "USER_NOT_FOUND",
-            message: "User not found",
+            code: "USER_DELETE_FAILED",
+            message: "Failed to delete user from database",
           },
         },
-        { status: 404 }
+        { status: 500 }
       );
     }
 
-    // Delete associated account record
-    const { MongoClient } = require("mongodb");
-    const client = new MongoClient(process.env.MONGODB_URI);
-    await client.connect();
-    const db = client.db("restaurant-erp");
-
-    await db.collection("account").deleteOne({
-      userId: new mongoose.Types.ObjectId(id),
+    // Delete associated account record using the correct user ID
+    const userIdField = existingUser.id || existingUser._id;
+    const accountDeleteResult = await db.collection("account").deleteOne({
+      userId: userIdField,
     });
 
-    await client.close();
+    console.log(
+      `Account deletion result for user ${userIdField}:`,
+      accountDeleteResult
+    );
 
-    const response: ApiResponse<{ message: string }> = {
+    // Delete associated session records
+    const sessionDeleteResult = await db.collection("session").deleteMany({
+      userId: userIdField,
+    });
+
+    console.log(
+      `Session deletion result for user ${userIdField}:`,
+      sessionDeleteResult
+    );
+
+    // Also delete from our User model for consistency (if it exists)
+    try {
+      await User.findOneAndDelete({ email: existingUser.email });
+    } catch (error) {
+      // Ignore if User model doesn't exist or fails
+      console.warn("Failed to delete from User model:", error);
+    }
+
+    const response: ApiResponse<{ message: string; deletedUser: any }> = {
       success: true,
-      data: { message: "User deleted successfully" },
+      data: {
+        message: "User deleted successfully",
+        deletedUser: deletedUser.value,
+      },
     };
 
     return NextResponse.json(response);
@@ -308,6 +390,7 @@ export async function DELETE(
         error: {
           code: "USER_DELETE_ERROR",
           message: "Failed to delete user",
+          details: error instanceof Error ? error.message : "Unknown error",
         },
       },
       { status: 500 }

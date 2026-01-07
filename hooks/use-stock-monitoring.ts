@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useGetStockLevelsQuery } from "@/lib/store/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,9 +27,9 @@ export function useStockMonitoring(options: UseStockMonitoringOptions = {}) {
     showToastAlerts = true,
   } = options;
 
-  const [previousStockLevels, setPreviousStockLevels] = useState<
-    Map<string, number>
-  >(new Map());
+  // Use useRef to avoid re-renders and maintain stable references
+  const previousStockLevelsRef = useRef<Map<string, number>>(new Map());
+  const isInitializedRef = useRef(false);
   const [stockAlerts, setStockAlerts] = useState<StockAlert[]>([]);
   const { toast } = useToast();
 
@@ -88,9 +88,18 @@ export function useStockMonitoring(options: UseStockMonitoringOptions = {}) {
     const currentStockLevels = new Map<string, number>();
     const newAlerts: StockAlert[] = [];
 
+    // Initialize on first load
+    if (!isInitializedRef.current) {
+      stockData.data.stockLevels.forEach((item) => {
+        previousStockLevelsRef.current.set(item._id, item.currentQuantity);
+      });
+      isInitializedRef.current = true;
+      return; // Skip alert generation on first load
+    }
+
     stockData.data.stockLevels.forEach((item) => {
       const { _id, name, currentQuantity, minStockLevel, metric } = item;
-      const previousQuantity = previousStockLevels.get(_id);
+      const previousQuantity = previousStockLevelsRef.current.get(_id);
 
       currentStockLevels.set(_id, currentQuantity);
 
@@ -151,25 +160,14 @@ export function useStockMonitoring(options: UseStockMonitoringOptions = {}) {
       }
     });
 
-    // Update previous stock levels
-    setPreviousStockLevels(currentStockLevels);
+    // Update previous stock levels using ref (no re-render)
+    previousStockLevelsRef.current = currentStockLevels;
 
     // Add new alerts
     if (newAlerts.length > 0) {
       newAlerts.forEach(addAlert);
     }
-  }, [stockData, enabled, previousStockLevels, addAlert, showToastAlert]);
-
-  // Initialize previous stock levels on first load
-  useEffect(() => {
-    if (!stockData?.success || previousStockLevels.size > 0) return;
-
-    const initialStockLevels = new Map<string, number>();
-    stockData.data.stockLevels.forEach((item) => {
-      initialStockLevels.set(item._id, item.currentQuantity);
-    });
-    setPreviousStockLevels(initialStockLevels);
-  }, [stockData, previousStockLevels.size]);
+  }, [stockData, enabled, addAlert, showToastAlert]);
 
   const clearAlerts = useCallback(() => {
     setStockAlerts([]);

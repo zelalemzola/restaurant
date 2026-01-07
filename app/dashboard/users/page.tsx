@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useAuth } from "@/lib/providers/AuthProvider";
+import { hasPermission } from "@/lib/utils/rbac";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,9 +44,11 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useRouteProtection } from "@/hooks/use-route-protection";
 
 interface User {
-  _id: string;
+  _id?: string;
+  id?: string;
   email: string;
   name: string;
   firstName?: string;
@@ -73,6 +77,13 @@ interface UpdateUserData {
 }
 
 export default function UsersPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+
+  // Add route protection
+  const { hasAccess, isLoading: isLoadingAuth } = useRouteProtection();
+
+  // All hooks must be called before any conditional logic
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -81,7 +92,6 @@ export default function UsersPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [error, setError] = useState<string>("");
-  const { toast } = useToast();
 
   // Form states
   const [createForm, setCreateForm] = useState<CreateUserData>({
@@ -100,6 +110,32 @@ export default function UsersPage() {
     role: "user",
     password: "",
   });
+
+  // Loading states
+  const [isCreating, setIsCreating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  // Check if user has permission to access this page
+  if (isLoadingAuth) {
+    return (
+      <div className="container mx-auto p-6">
+        <div className="text-center py-8">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user || !hasPermission(user, "users.read") || !hasAccess) {
+    return (
+      <div className="container mx-auto p-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            You don't have permission to access user management.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
 
   // Fetch users
   const fetchUsers = async () => {
@@ -129,6 +165,27 @@ export default function UsersPage() {
   // Create user
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Basic client-side validation
+    if (!createForm.email || !createForm.name || !createForm.password) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (createForm.password.length < 8) {
+      toast({
+        title: "Validation Error",
+        description: "Password must be at least 8 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreating(true);
     try {
       const response = await fetch("/api/users", {
         method: "POST",
@@ -141,7 +198,7 @@ export default function UsersPage() {
       if (data.success) {
         toast({
           title: "Success",
-          description: "User created successfully",
+          description: `User "${createForm.name}" created successfully. They can now log in with their email and password.`,
         });
         setIsCreateDialogOpen(false);
         setCreateForm({
@@ -156,16 +213,19 @@ export default function UsersPage() {
       } else {
         toast({
           title: "Error",
-          description: data.error.message,
+          description: data.error.message || "Failed to create user",
           variant: "destructive",
         });
       }
     } catch (error) {
+      console.error("User creation error:", error);
       toast({
         title: "Error",
-        description: "Failed to create user",
+        description: "Failed to create user. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -174,6 +234,7 @@ export default function UsersPage() {
     e.preventDefault();
     if (!editingUser) return;
 
+    setIsUpdating(true);
     try {
       const updateData = { ...editForm };
       // Remove empty password field
@@ -181,7 +242,9 @@ export default function UsersPage() {
         delete updateData.password;
       }
 
-      const response = await fetch(`/api/users/${editingUser._id}`, {
+      // Use the correct ID field - Better Auth uses 'id', fallback to '_id'
+      const userId = editingUser.id || editingUser._id;
+      const response = await fetch(`/api/users/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updateData),
@@ -210,6 +273,8 @@ export default function UsersPage() {
         description: "Failed to update user",
         variant: "destructive",
       });
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -313,7 +378,8 @@ export default function UsersPage() {
                 <DialogTitle>Create New User</DialogTitle>
                 <DialogDescription>
                   Add a new user to the system with appropriate role and
-                  permissions.
+                  permissions. The user will be able to log in immediately with
+                  their email and password.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -407,12 +473,19 @@ export default function UsersPage() {
                       setCreateForm({ ...createForm, password: e.target.value })
                     }
                     className="col-span-3"
+                    placeholder="Minimum 8 characters with uppercase, lowercase, and number"
                     required
                   />
                 </div>
+                <div className="text-sm text-muted-foreground px-4">
+                  Password requirements: At least 8 characters with uppercase,
+                  lowercase, and number
+                </div>
               </div>
               <DialogFooter>
-                <Button type="submit">Create User</Button>
+                <Button type="submit" disabled={isCreating}>
+                  {isCreating ? "Creating..." : "Create User"}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -482,57 +555,61 @@ export default function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user._id}>
-                    <TableCell className="font-medium">
-                      <div>
-                        <div>{user.name}</div>
-                        {(user.firstName || user.lastName) && (
-                          <div className="text-sm text-muted-foreground">
-                            {user.firstName} {user.lastName}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Badge variant={getRoleBadgeVariant(user.role)}>
-                        <div className="flex items-center gap-1">
-                          {getRoleIcon(user.role)}
-                          {user.role}
+                {users.map((user) => {
+                  // Use the correct ID field - Better Auth uses 'id', fallback to '_id'
+                  const userId = user.id || user._id;
+                  return (
+                    <TableRow key={userId}>
+                      <TableCell className="font-medium">
+                        <div>
+                          <div>{user.name}</div>
+                          {(user.firstName || user.lastName) && (
+                            <div className="text-sm text-muted-foreground">
+                              {user.firstName} {user.lastName}
+                            </div>
+                          )}
                         </div>
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={user.emailVerified ? "default" : "secondary"}
-                      >
-                        {user.emailVerified ? "Verified" : "Unverified"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openEditDialog(user)}
+                      </TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={getRoleBadgeVariant(user.role)}>
+                          <div className="flex items-center gap-1">
+                            {getRoleIcon(user.role)}
+                            {user.role}
+                          </div>
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={user.emailVerified ? "default" : "secondary"}
                         >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteUser(user._id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                          {user.emailVerified ? "Verified" : "Unverified"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditDialog(user)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteUser(userId!)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           )}
@@ -626,7 +703,9 @@ export default function UsersPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="submit">Update User</Button>
+              <Button type="submit" disabled={isUpdating}>
+                {isUpdating ? "Updating..." : "Update User"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import SalesTransaction from "@/lib/models/SalesTransaction";
 import CostOperation from "@/lib/models/CostOperation";
+import CostExpense from "@/lib/models/CostExpense";
 import Product from "@/lib/models/Product";
 import mongoose from "mongoose";
 
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
-    // Get costs data
+    // Get operational costs data
     const costsData = await CostOperation.aggregate([
       {
         $match: {
@@ -120,8 +121,27 @@ export async function GET(request: NextRequest) {
       },
     ]);
 
+    // Get inventory expenses data
+    const inventoryExpensesData = await CostExpense.aggregate([
+      {
+        $match: {
+          recordedAt: { $gte: queryStartDate, $lte: queryEndDate },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalInventoryExpenses: { $sum: "$totalAmount" },
+          expenses: { $push: "$$ROOT" },
+        },
+      },
+    ]);
+
     const totalRevenue = salesData[0]?.totalRevenue || 0;
-    const totalCosts = costsData[0]?.totalCosts || 0;
+    const operationalCosts = costsData[0]?.totalCosts || 0;
+    const inventoryExpenses =
+      inventoryExpensesData[0]?.totalInventoryExpenses || 0;
+    const totalCosts = operationalCosts + inventoryExpenses;
     const totalProfit = totalRevenue - totalCosts;
     const profitMargin =
       totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
@@ -165,8 +185,8 @@ export async function GET(request: NextRequest) {
       { $sort: { amount: -1 } },
     ]);
 
-    // Costs by category
-    const costsByCategory = await CostOperation.aggregate([
+    // Costs by category (operational costs)
+    const operationalCostsByCategory = await CostOperation.aggregate([
       {
         $match: {
           date: { $gte: queryStartDate, $lte: queryEndDate },
@@ -180,7 +200,7 @@ export async function GET(request: NextRequest) {
       },
       {
         $project: {
-          category: "$_id",
+          category: { $concat: ["operational_", "$_id"] },
           amount: 1,
           percentage: {
             $multiply: [{ $divide: ["$amount", totalCosts || 1] }, 100],
@@ -189,6 +209,37 @@ export async function GET(request: NextRequest) {
       },
       { $sort: { amount: -1 } },
     ]);
+
+    // Inventory costs by category
+    const inventoryCostsByCategory = await CostExpense.aggregate([
+      {
+        $match: {
+          recordedAt: { $gte: queryStartDate, $lte: queryEndDate },
+        },
+      },
+      {
+        $group: {
+          _id: "$category",
+          amount: { $sum: "$totalAmount" },
+        },
+      },
+      {
+        $project: {
+          category: { $concat: ["inventory_", "$_id"] },
+          amount: 1,
+          percentage: {
+            $multiply: [{ $divide: ["$amount", totalCosts || 1] }, 100],
+          },
+        },
+      },
+      { $sort: { amount: -1 } },
+    ]);
+
+    // Combine both cost categories
+    const costsByCategory = [
+      ...operationalCostsByCategory,
+      ...inventoryCostsByCategory,
+    ].sort((a, b) => b.amount - a.amount);
 
     // Profit by period
     const profitByPeriod = await getProfitByPeriod(
@@ -280,7 +331,8 @@ async function getCostsByPeriod(
 ) {
   const groupBy = getGroupByFormat(period);
 
-  return await CostOperation.aggregate([
+  // Get operational costs by period
+  const operationalCosts = await CostOperation.aggregate([
     {
       $match: {
         date: { $gte: startDate, $lte: endDate },
@@ -301,6 +353,49 @@ async function getCostsByPeriod(
     },
     { $sort: { date: 1 } },
   ]);
+
+  // Get inventory expenses by period
+  const inventoryExpenses = await CostExpense.aggregate([
+    {
+      $match: {
+        recordedAt: { $gte: startDate, $lte: endDate },
+      },
+    },
+    {
+      $group: {
+        _id: groupBy,
+        amount: { $sum: "$totalAmount" },
+      },
+    },
+    {
+      $project: {
+        date: "$_id",
+        amount: 1,
+        _id: 0,
+      },
+    },
+    { $sort: { date: 1 } },
+  ]);
+
+  // Combine operational costs and inventory expenses by date
+  const combinedCosts = new Map();
+
+  operationalCosts.forEach((item) => {
+    combinedCosts.set(item.date, item.amount);
+  });
+
+  inventoryExpenses.forEach((item) => {
+    const existing = combinedCosts.get(item.date) || 0;
+    combinedCosts.set(item.date, existing + item.amount);
+  });
+
+  // Convert back to array format
+  return Array.from(combinedCosts.entries())
+    .map(([date, amount]) => ({
+      date,
+      amount,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 async function getProfitByPeriod(
@@ -310,34 +405,23 @@ async function getProfitByPeriod(
 ) {
   const groupBy = getGroupByFormat(period);
 
-  const [revenueData, costsData] = await Promise.all([
-    SalesTransaction.aggregate([
-      {
-        $match: {
-          createdAt: { $gte: startDate, $lte: endDate },
-        },
+  // Get revenue data
+  const revenueData = await SalesTransaction.aggregate([
+    {
+      $match: {
+        createdAt: { $gte: startDate, $lte: endDate },
       },
-      {
-        $group: {
-          _id: groupBy,
-          revenue: { $sum: "$totalAmount" },
-        },
+    },
+    {
+      $group: {
+        _id: groupBy,
+        revenue: { $sum: "$totalAmount" },
       },
-    ]),
-    CostOperation.aggregate([
-      {
-        $match: {
-          date: { $gte: startDate, $lte: endDate },
-        },
-      },
-      {
-        $group: {
-          _id: groupBy,
-          costs: { $sum: "$amount" },
-        },
-      },
-    ]),
+    },
   ]);
+
+  // Get combined costs data (operational + inventory)
+  const costsData = await getCostsByPeriod(startDate, endDate, period);
 
   // Merge revenue and costs data
   const profitData = new Map();
@@ -351,13 +435,13 @@ async function getProfitByPeriod(
   });
 
   costsData.forEach((item) => {
-    const existing = profitData.get(item._id) || {
-      date: item._id,
+    const existing = profitData.get(item.date) || {
+      date: item.date,
       revenue: 0,
       costs: 0,
     };
-    existing.costs = item.costs;
-    profitData.set(item._id, existing);
+    existing.costs = item.amount;
+    profitData.set(item.date, existing);
   });
 
   return Array.from(profitData.values())

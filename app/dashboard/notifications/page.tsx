@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertCircle, Bell, CheckCircle, Trash2, Mail } from "lucide-react";
@@ -28,22 +34,37 @@ export default function NotificationsPage() {
     refetch,
   } = useGetNotificationsQuery({
     unreadOnly: activeTab === "unread",
-    type: activeTab === "low-stock" ? "low-stock" : undefined,
+    type:
+      activeTab === "low-stock"
+        ? "low_stock"
+        : activeTab === "system"
+        ? "system"
+        : undefined,
+    userId: "system", // Explicitly set userId
   });
 
   const [markAsRead] = useMarkNotificationAsReadMutation();
   const [markAllAsRead] = useMarkAllNotificationsAsReadMutation();
   const [deleteNotification] = useDeleteNotificationMutation();
 
-  const notifications = notificationsResponse?.success ? notificationsResponse.data : [];
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  // Safely extract notifications array
+  const notifications =
+    notificationsResponse?.success &&
+    Array.isArray(notificationsResponse.data?.notifications)
+      ? notificationsResponse.data.notifications
+      : [];
 
-  const handleMarkAsRead = async (id: string, isRead: boolean) => {
+  const unreadCount = notificationsResponse?.success
+    ? notificationsResponse.data.unreadCount ||
+      notifications.filter((n) => n && !n.read).length
+    : 0;
+
+  const handleMarkAsRead = async (id: string, read: boolean) => {
     try {
-      await markAsRead({ id, isRead }).unwrap();
+      await markAsRead({ id, read }).unwrap();
       toast({
         title: "Success",
-        description: `Notification marked as ${isRead ? "read" : "unread"}`,
+        description: `Notification marked as ${read ? "read" : "unread"}`,
       });
     } catch (error) {
       toast({
@@ -90,25 +111,37 @@ export default function NotificationsPage() {
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case "low-stock":
+      case "low_stock":
         return <AlertCircle className="h-5 w-5 text-orange-500" />;
       case "system":
         return <Bell className="h-5 w-5 text-blue-500" />;
-      case "alert":
-        return <AlertCircle className="h-5 w-5 text-red-500" />;
+      case "inventory_updated":
+        return <Bell className="h-5 w-5 text-green-500" />;
+      case "cost_created":
+      case "cost_updated":
+        return <Bell className="h-5 w-5 text-purple-500" />;
+      case "product_created":
+      case "product_updated":
+        return <Bell className="h-5 w-5 text-blue-500" />;
       default:
         return <Bell className="h-5 w-5 text-gray-500" />;
     }
   };
 
-  const getNotificationBadgeVariant = (type: string) => {
+  const getNotificationBadgeVariant = (type: string, priority?: string) => {
+    if (priority === "high" || type === "low_stock") {
+      return "destructive" as const;
+    }
     switch (type) {
-      case "low-stock":
-        return "secondary" as const;
+      case "low_stock":
+        return "destructive" as const;
       case "system":
         return "default" as const;
-      case "alert":
-        return "destructive" as const;
+      case "inventory_updated":
+        return "secondary" as const;
+      case "cost_created":
+      case "cost_updated":
+        return "outline" as const;
       default:
         return "outline" as const;
     }
@@ -129,7 +162,9 @@ export default function NotificationsPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-center">
-            <p className="text-lg text-red-600 mb-4">Failed to load notifications</p>
+            <p className="text-lg text-red-600 mb-4">
+              Failed to load notifications
+            </p>
             <Button onClick={() => refetch()}>Try Again</Button>
           </div>
         </div>
@@ -161,17 +196,21 @@ export default function NotificationsPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="all">
-            All ({notifications.length})
-          </TabsTrigger>
-          <TabsTrigger value="unread">
-            Unread ({unreadCount})
-          </TabsTrigger>
+          <TabsTrigger value="all">All ({notifications.length})</TabsTrigger>
+          <TabsTrigger value="unread">Unread ({unreadCount})</TabsTrigger>
           <TabsTrigger value="low-stock">
-            Low Stock ({notifications.filter((n) => n.type === "low-stock").length})
+            Low Stock (
+            {Array.isArray(notifications)
+              ? notifications.filter((n) => n && n.type === "low_stock").length
+              : 0}
+            )
           </TabsTrigger>
           <TabsTrigger value="system">
-            System ({notifications.filter((n) => n.type === "system").length})
+            System (
+            {Array.isArray(notifications)
+              ? notifications.filter((n) => n && n.type === "system").length
+              : 0}
+            )
           </TabsTrigger>
         </TabsList>
 
@@ -181,7 +220,9 @@ export default function NotificationsPage() {
               <CardContent className="flex items-center justify-center py-12">
                 <div className="text-center">
                   <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">No notifications</h3>
+                  <h3 className="text-lg font-semibold mb-2">
+                    No notifications
+                  </h3>
                   <p className="text-muted-foreground">
                     {activeTab === "unread"
                       ? "You're all caught up! No unread notifications."
@@ -196,7 +237,7 @@ export default function NotificationsPage() {
                 <Card
                   key={notification._id}
                   className={`transition-all ${
-                    !notification.isRead
+                    !notification.read
                       ? "border-l-4 border-l-blue-500 bg-blue-50/50"
                       : "hover:shadow-md"
                   }`}
@@ -210,19 +251,27 @@ export default function NotificationsPage() {
                             <CardTitle className="text-base">
                               {notification.title}
                             </CardTitle>
-                            <Badge variant={getNotificationBadgeVariant(notification.type)}>
-                              {notification.type.replace("-", " ")}
+                            <Badge
+                              variant={getNotificationBadgeVariant(
+                                notification.type,
+                                notification.priority
+                              )}
+                            >
+                              {notification.type.replace("_", " ")}
                             </Badge>
-                            {!notification.isRead && (
+                            {!notification.read && (
                               <Badge variant="outline" className="text-xs">
                                 New
                               </Badge>
                             )}
                           </div>
                           <CardDescription className="text-sm">
-                            {formatDistanceToNow(new Date(notification.createdAt), {
-                              addSuffix: true,
-                            })}
+                            {formatDistanceToNow(
+                              new Date(notification.createdAt),
+                              {
+                                addSuffix: true,
+                              }
+                            )}
                           </CardDescription>
                         </div>
                       </div>
@@ -231,11 +280,18 @@ export default function NotificationsPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() =>
-                            handleMarkAsRead(notification._id, !notification.isRead)
+                            handleMarkAsRead(
+                              notification._id,
+                              !notification.read
+                            )
                           }
-                          title={notification.isRead ? "Mark as unread" : "Mark as read"}
+                          title={
+                            notification.read
+                              ? "Mark as unread"
+                              : "Mark as read"
+                          }
                         >
-                          {notification.isRead ? (
+                          {notification.read ? (
                             <Mail className="h-4 w-4" />
                           ) : (
                             <CheckCircle className="h-4 w-4" />
@@ -256,16 +312,54 @@ export default function NotificationsPage() {
                     <p className="text-sm text-muted-foreground mb-3">
                       {notification.message}
                     </p>
-                    {notification.type === "low-stock" && notification.productId && (
-                      <div className="flex gap-2">
+                    {notification.type === "low_stock" &&
+                      notification.data?.productId && (
+                        <div className="flex gap-2 mt-2">
+                          <Link href="/dashboard/inventory/stock-levels">
+                            <Button variant="outline" size="sm">
+                              View Stock Levels
+                            </Button>
+                          </Link>
+                          <Link
+                            href={`/dashboard/inventory/products?productId=${notification.data.productId}`}
+                          >
+                            <Button variant="outline" size="sm">
+                              Manage Product
+                            </Button>
+                          </Link>
+                          {notification.data.urgencyLevel === "critical" && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => {
+                                // This could trigger a restock dialog
+                                toast({
+                                  title: "Restock Required",
+                                  description: `${notification.data.productName} needs immediate restocking`,
+                                  variant: "destructive",
+                                });
+                              }}
+                            >
+                              Urgent Restock
+                            </Button>
+                          )}
+                        </div>
+                      )}
+                    {notification.type === "inventory_updated" && (
+                      <div className="flex gap-2 mt-2">
                         <Link href="/dashboard/inventory/stock-levels">
                           <Button variant="outline" size="sm">
-                            View Stock Levels
+                            View Inventory
                           </Button>
                         </Link>
-                        <Link href="/dashboard/inventory/products">
+                      </div>
+                    )}
+                    {(notification.type === "cost_created" ||
+                      notification.type === "cost_updated") && (
+                      <div className="flex gap-2 mt-2">
+                        <Link href="/costs">
                           <Button variant="outline" size="sm">
-                            Manage Products
+                            View Costs
                           </Button>
                         </Link>
                       </div>

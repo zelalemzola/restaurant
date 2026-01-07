@@ -279,7 +279,7 @@ export async function restoreBackup(
     await createAuditLog({
       userId,
       userEmail,
-      action: "SYSTEM",
+      action: "DATA_EXPORT", // Using DATA_EXPORT as closest match for restore operation
       resource: "SYSTEM",
       details: {
         operation: "restore",
@@ -303,7 +303,7 @@ export async function restoreBackup(
     await createAuditLog({
       userId,
       userEmail,
-      action: "SYSTEM",
+      action: "DATA_EXPORT", // Using DATA_EXPORT as closest match for restore operation
       resource: "SYSTEM",
       details: {
         operation: "restore",

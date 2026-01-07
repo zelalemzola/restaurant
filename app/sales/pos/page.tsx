@@ -17,11 +17,17 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import {
+  useRealTimeUpdates,
+  useOptimisticUpdates,
+} from "@/lib/hooks/useRealTimeUpdates";
+import {
   useGetProductsQuery,
   useCreateSalesTransactionMutation,
 } from "@/lib/store/api";
 import { PaymentMethod } from "@/types";
 import { ShoppingCart, Plus, Minus, Trash2, CreditCard } from "lucide-react";
+import { BackButton } from "@/components/navigation/BackButton";
+import { Breadcrumb } from "@/components/navigation/Breadcrumb";
 
 interface CartItem {
   productId: string;
@@ -46,6 +52,18 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
 export default function PointOfSalePage() {
   const router = useRouter();
   const { toast } = useToast();
+
+  // Enable real-time updates for products and sales
+  useRealTimeUpdates({
+    enableProducts: true,
+    enableInventory: true,
+    enableSales: true,
+    enableCosts: false,
+    enableNotifications: false,
+  });
+
+  // Hook for optimistic updates
+  const { invalidateAfterMutation } = useOptimisticUpdates();
 
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
@@ -160,6 +178,14 @@ export default function PointOfSalePage() {
         paymentMethod: paymentMethod as PaymentMethod,
       }).unwrap();
 
+      // Immediately invalidate related data for real-time updates
+      invalidateAfterMutation([
+        "Product",
+        "SalesTransaction",
+        "StockTransaction",
+        "Analytics",
+      ]);
+
       toast({
         title: "Success",
         description: "Sale completed successfully!",
@@ -179,9 +205,19 @@ export default function PointOfSalePage() {
 
   return (
     <div className="w-full p-6">
-      <div className="flex items-center gap-2 mb-6">
-        <ShoppingCart className="h-6 w-6" />
-        <h1 className="text-2xl font-bold">Point of Sale</h1>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <BackButton fallbackPath="/sales" showText={true} />
+          <div>
+            <h1 className="text-3xl font-bold">Point of Sale</h1>
+            <Breadcrumb
+              items={[
+                { label: "Sales", href: "/sales" },
+                { label: "Point of Sale", href: "/sales/pos" },
+              ]}
+            />
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

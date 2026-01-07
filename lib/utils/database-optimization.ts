@@ -14,6 +14,9 @@ export function optimizeConnectionPool() {
 export async function initializeIndexes() {
   try {
     const db = mongoose.connection.db;
+    if (!db) {
+      throw new Error("Database connection not available");
+    }
 
     // Product collection indexes
     await db.collection("products").createIndexes([
@@ -59,10 +62,10 @@ export async function initializeIndexes() {
     // Notification collection indexes
     await db.collection("notifications").createIndexes([
       { key: { type: 1 }, background: true },
-      { key: { isRead: 1 }, background: true },
+      { key: { read: 1 }, background: true },
       { key: { createdAt: -1 }, background: true },
-      { key: { productId: 1 }, background: true },
-      { key: { isRead: 1, createdAt: -1 }, background: true }, // Unread notifications
+      { key: { userId: 1 }, background: true },
+      { key: { read: 1, createdAt: -1 }, background: true }, // Unread notifications
     ]);
 
     // ProductGroup collection indexes

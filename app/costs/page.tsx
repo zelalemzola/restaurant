@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -9,7 +9,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, DollarSign, TrendingUp, Calendar, Receipt } from "lucide-react";
+import {
+  Plus,
+  DollarSign,
+  TrendingUp,
+  Calendar,
+  Receipt,
+  Package,
+  BarChart3,
+} from "lucide-react";
 import { CostOperationForm } from "@/components/costs/CostOperationForm";
 import { CostOperationsList } from "@/components/costs/CostOperationsList";
 import { useGetCostOperationsQuery } from "@/lib/store/api";
@@ -43,6 +51,41 @@ export default function CostsPage() {
     limit: 1000, // Get all recurring costs
   });
 
+  // Fetch cost expenses summary
+  const [costExpensesSummary, setCostExpensesSummary] = useState<any>(null);
+  const [costExpensesLoading, setCostExpensesLoading] = useState(true);
+  const [costExpensesError, setCostExpensesError] = useState<string>("");
+
+  useEffect(() => {
+    const fetchCostExpensesSummary = async () => {
+      try {
+        setCostExpensesLoading(true);
+        setCostExpensesError("");
+        const params = new URLSearchParams({
+          startDate: startOfMonth.toISOString().split("T")[0],
+          endDate: endOfMonth.toISOString().split("T")[0],
+        });
+        const response = await fetch(`/api/cost-expenses/summary?${params}`);
+        const data = await response.json();
+        if (data.success) {
+          setCostExpensesSummary(data.data);
+          console.log("Cost expenses summary:", data.data); // Debug log
+        } else {
+          setCostExpensesError(
+            data.error?.message || "Failed to fetch cost expenses"
+          );
+        }
+      } catch (error) {
+        console.error("Failed to fetch cost expenses summary:", error);
+        setCostExpensesError("Failed to fetch cost expenses summary");
+      } finally {
+        setCostExpensesLoading(false);
+      }
+    };
+
+    fetchCostExpensesSummary();
+  }, [startOfMonth, endOfMonth]);
+
   const monthlyCosts = monthlyData?.success
     ? monthlyData.data.costOperations
     : [];
@@ -72,6 +115,10 @@ export default function CostsPage() {
 
   // Calculate summary statistics
   const monthlyTotal = monthlyCosts.reduce((sum, cost) => sum + cost.amount, 0);
+  const inventoryExpensesTotal =
+    costExpensesSummary?.totalExpenses?.grandTotal || 0;
+  const totalMonthlyWithInventory = monthlyTotal + inventoryExpensesTotal;
+
   const recurringMonthlyTotal = recurringCosts
     .filter((cost) => cost.recurringPeriod === "monthly")
     .reduce((sum, cost) => sum + cost.amount, 0);
@@ -111,13 +158,32 @@ export default function CostsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${monthlyTotal.toFixed(2)}</div>
+            <div className="text-2xl font-bold">
+              ${totalMonthlyWithInventory.toFixed(2)}
+            </div>
             <p className="text-xs text-muted-foreground">
               {currentMonth.toLocaleDateString("en-US", {
                 month: "long",
                 year: "numeric",
               })}
             </p>
+            <div className="text-xs text-muted-foreground mt-1 space-y-1">
+              {monthlyTotal > 0 && (
+                <p>Operations: ${monthlyTotal.toFixed(2)}</p>
+              )}
+              {inventoryExpensesTotal > 0 && (
+                <p>Inventory: ${inventoryExpensesTotal.toFixed(2)}</p>
+              )}
+              {costExpensesLoading && <p>Loading inventory costs...</p>}
+              {costExpensesError && (
+                <p className="text-red-500">Error: {costExpensesError}</p>
+              )}
+              {!costExpensesLoading &&
+                !costExpensesError &&
+                inventoryExpensesTotal === 0 && (
+                  <p>No inventory costs this month</p>
+                )}
+            </div>
           </CardContent>
         </Card>
 
@@ -158,18 +224,96 @@ export default function CostsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
-              Total Operations
+              Operational Costs
             </CardTitle>
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{monthlyCosts.length}</div>
+            <div className="text-2xl font-bold">${monthlyTotal.toFixed(2)}</div>
             <p className="text-xs text-muted-foreground">
-              Cost entries this month
+              Manual cost operations only
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              Inventory Expenses
+            </CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              $
+              {costExpensesSummary?.totalExpenses?.grandTotal?.toFixed(2) ||
+                "0.00"}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Automatic inventory cost tracking
             </p>
           </CardContent>
         </Card>
       </div>
+
+      {/* Cost Expenses Summary */}
+      {costExpensesSummary && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Cost Expenses Breakdown
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  $
+                  {costExpensesSummary.totalExpenses.totalInventoryExpenses.toFixed(
+                    2
+                  )}
+                </div>
+                <p className="text-sm text-blue-600">Inventory Costs</p>
+              </div>
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">
+                  $
+                  {costExpensesSummary.totalExpenses.totalOperationalExpenses.toFixed(
+                    2
+                  )}
+                </div>
+                <p className="text-sm text-green-600">Operational Costs</p>
+              </div>
+              <div className="text-center p-4 bg-orange-50 rounded-lg">
+                <div className="text-2xl font-bold text-orange-600">
+                  $
+                  {costExpensesSummary.totalExpenses.totalOverheadExpenses.toFixed(
+                    2
+                  )}
+                </div>
+                <p className="text-sm text-orange-600">Overhead Costs</p>
+              </div>
+            </div>
+            <div className="mt-4 text-center">
+              <div className="flex gap-2 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => window.open("/cost-expenses", "_blank")}
+                >
+                  View Detailed Cost Expenses
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => window.open("/profit-margins", "_blank")}
+                >
+                  Analyze Profit Margins
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cost Operations List */}
       <CostOperationsList onEdit={handleEditCost} />

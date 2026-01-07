@@ -23,10 +23,23 @@ import {
   useCreateProductMutation,
   useUpdateProductMutation,
 } from "@/lib/store/api";
+import { useOptimisticUpdates } from "@/lib/hooks/useRealTimeUpdates";
 import { MetricSelector } from "./MetricSelector";
 import type { Product, ProductType } from "@/types";
 
-type ProductFormData = z.infer<typeof createProductSchema>;
+// Create a form-specific schema that allows optional numbers for form inputs
+const productFormSchema = z.object({
+  name: z.string().min(1, "Product name is required").max(100).trim(),
+  groupId: z.string().min(1, "Product group is required"),
+  type: z.enum(["stock", "sellable", "combination"]),
+  metric: z.string().min(1, "Metric is required").max(20).trim(),
+  currentQuantity: z.number().min(0).optional(),
+  minStockLevel: z.number().min(0).optional(),
+  costPrice: z.number().min(0).optional(),
+  sellingPrice: z.number().min(0).optional(),
+});
+
+type ProductFormData = z.infer<typeof productFormSchema>;
 
 interface ProductFormProps {
   product?: Product;
@@ -51,6 +64,9 @@ export function ProductForm({
   const isEditing = !!product;
   const isLoading = isCreating || isUpdating;
 
+  // Hook for optimistic updates
+  const { invalidateAfterMutation } = useOptimisticUpdates();
+
   const {
     register,
     handleSubmit,
@@ -59,7 +75,7 @@ export function ProductForm({
     formState: { errors },
     reset,
   } = useForm<ProductFormData>({
-    resolver: zodResolver(createProductSchema),
+    resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
       groupId: "",
@@ -67,8 +83,8 @@ export function ProductForm({
       metric: "",
       currentQuantity: 0,
       minStockLevel: 0,
-      costPrice: 0,
-      sellingPrice: 0,
+      costPrice: undefined,
+      sellingPrice: undefined,
     },
   });
 
@@ -172,6 +188,8 @@ export function ProductForm({
 
         console.log("Update result:", result);
         if (result.success) {
+          // Immediately invalidate product-related data for real-time updates
+          invalidateAfterMutation(["Product", "Analytics"]);
           onSuccess();
         } else {
           setError(result.error.message);
@@ -181,6 +199,8 @@ export function ProductForm({
 
         console.log("Create result:", result);
         if (result.success) {
+          // Immediately invalidate product-related data for real-time updates
+          invalidateAfterMutation(["Product", "Analytics"]);
           onSuccess();
         } else {
           setError(result.error.message);

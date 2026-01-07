@@ -3,6 +3,7 @@ import connectDB from "@/lib/mongodb";
 import Product from "@/lib/models/Product";
 import SalesTransaction from "@/lib/models/SalesTransaction";
 import Notification from "@/lib/models/Notification";
+import CostExpense from "@/lib/models/CostExpense";
 import {
   AggregationPipelines,
   QueryOptimizations,
@@ -30,6 +31,7 @@ async function getDashboardData() {
     recentTransactions,
     unreadNotifications,
     totalProducts,
+    monthlyCostExpenses,
   ] = await Promise.all([
     // Low stock products using aggregation pipeline
     Product.aggregate(AggregationPipelines.lowStockProducts()).exec(),
@@ -86,11 +88,40 @@ async function getDashboardData() {
       .exec(),
 
     // Unread notifications count
-    Notification.countDocuments({ isRead: false }).exec(),
+    Notification.countDocuments({ read: false }).exec(),
 
     // Total products count
     Product.countDocuments().exec(),
+
+    // Monthly cost expenses summary
+    CostExpense.aggregate([
+      {
+        $match: {
+          recordedAt: {
+            $gte: new Date(today.getFullYear(), today.getMonth(), 1),
+            $lt: new Date(today.getFullYear(), today.getMonth() + 1, 1),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$category",
+          totalAmount: { $sum: "$totalAmount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]).exec(),
   ]);
+
+  // Calculate cost expenses totals
+  const costExpensesTotals = monthlyCostExpenses.reduce(
+    (acc, expense) => {
+      acc.total += expense.totalAmount;
+      acc[expense._id] = expense.totalAmount;
+      return acc;
+    },
+    { total: 0, inventory: 0, operational: 0, overhead: 0 }
+  );
 
   return {
     lowStockCount: lowStockProducts.length,
@@ -99,6 +130,13 @@ async function getDashboardData() {
     recentTransactions,
     unreadNotifications,
     totalProducts,
+    costExpenses: {
+      total: costExpensesTotals.total,
+      inventory: costExpensesTotals.inventory,
+      operational: costExpensesTotals.operational,
+      overhead: costExpensesTotals.overhead,
+      breakdown: monthlyCostExpenses,
+    },
     lastUpdated: new Date().toISOString(),
   };
 }
@@ -125,6 +163,7 @@ export async function GET(request: NextRequest) {
         lowStockCount: dashboardData.lowStockCount,
         unreadNotifications: dashboardData.unreadNotifications,
         totalProducts: dashboardData.totalProducts,
+        costExpenses: dashboardData.costExpenses,
         recentTransactions: dashboardData.recentTransactions.map(
           (transaction: any) => ({
             _id: transaction._id,

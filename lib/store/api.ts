@@ -315,12 +315,23 @@ export const api = createApi({
 
     // Notifications
     getNotifications: builder.query<
-      ApiResponse<Notification[]>,
-      { unreadOnly?: boolean; type?: string }
+      ApiResponse<{
+        notifications: Notification[];
+        unreadCount: number;
+        pagination: {
+          limit: number;
+          skip: number;
+          total: number;
+        };
+      }>,
+      { unreadOnly?: boolean; type?: string; userId?: string }
     >({
       query: (params) => ({
         url: "/notifications",
-        params,
+        params: {
+          ...params,
+          userId: params?.userId || "system", // Default to system user
+        },
       }),
       providesTags: ["Notification"],
     }),
@@ -337,12 +348,12 @@ export const api = createApi({
     }),
     markNotificationAsRead: builder.mutation<
       ApiResponse<Notification>,
-      { id: string; isRead: boolean }
+      { id: string; read: boolean }
     >({
-      query: ({ id, isRead }) => ({
+      query: ({ id, read }) => ({
         url: `/notifications/${id}`,
         method: "PATCH",
-        body: { isRead },
+        body: { read },
       }),
       invalidatesTags: ["Notification"],
     }),

@@ -107,7 +107,7 @@ async function handleSingleUsage(
 
   await connectDB();
 
-  // Verify product exists and is a stock or combination item
+  // Verify product exists and has stock tracking enabled
   const product = await Product.findById(productId);
   if (!product) {
     await auditFailure(
@@ -133,7 +133,8 @@ async function handleSingleUsage(
     return NextResponse.json(response, { status: 404 });
   }
 
-  if (!["stock", "combination"].includes(product.type)) {
+  // Check if stock tracking is enabled for this product
+  if (product.stockTrackingEnabled === false) {
     await auditFailure(
       context,
       "STOCK_USAGE",
@@ -143,17 +144,16 @@ async function handleSingleUsage(
         operation: "single_stock_usage",
         productId,
         productType: product.type,
-        error: "Invalid product type for stock usage",
+        error: "Stock tracking disabled for product",
       },
-      "Stock usage can only be recorded for stock or combination items"
+      "Stock tracking is disabled for this product"
     );
 
     const response: ApiResponse<never> = {
       success: false,
       error: {
-        code: "INVALID_PRODUCT_TYPE",
-        message:
-          "Stock usage can only be recorded for stock or combination items",
+        code: "STOCK_TRACKING_DISABLED",
+        message: "Stock tracking is disabled for this product",
       },
     };
     return NextResponse.json(response, { status: 400 });
@@ -268,11 +268,11 @@ async function handleBulkUsage(
 
   await connectDB();
 
-  // Verify all products exist and are valid for usage
+  // Verify all products exist and have stock tracking enabled
   const productIds = items.map((item) => item.productId);
   const products = await Product.find({
     _id: { $in: productIds },
-    type: { $in: ["stock", "combination"] },
+    stockTrackingEnabled: { $ne: false }, // Only include products with stock tracking enabled
   });
 
   if (products.length !== productIds.length) {
@@ -285,9 +285,9 @@ async function handleBulkUsage(
         operation: "bulk_stock_usage",
         requestedProducts: productIds.length,
         foundProducts: products.length,
-        error: "Invalid products for stock usage",
+        error: "Products not found or stock tracking disabled",
       },
-      "One or more products not found or invalid for stock usage"
+      "One or more products not found or have stock tracking disabled"
     );
 
     const response: ApiResponse<never> = {

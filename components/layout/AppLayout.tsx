@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/providers/AuthProvider";
 import { signOut } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { NotificationBadge } from "@/components/ui/notification-badge";
-import { hasPermission } from "@/lib/utils/rbac";
+import { hasPermission, Permission } from "@/lib/utils/rbac";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -24,22 +24,38 @@ import {
   Users,
   ChevronDown,
   ChevronRight,
+  Activity,
 } from "lucide-react";
+import { ModeToggle } from "../ModeToggle";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: any;
+  permission?: Permission;
+  allowedRoles?: string[]; // Add role-based access control
+  children?: Array<{
+    name: string;
+    href: string;
+  }>;
+}
+
+const navigation: NavigationItem[] = [
   {
     name: "Dashboard",
     href: "/dashboard",
     icon: LayoutDashboard,
+    allowedRoles: ["admin", "manager"], // All roles can access dashboard
   },
   {
     name: "Inventory",
     href: "/dashboard/",
     icon: Package,
+    allowedRoles: ["admin", "manager", "user"], // All roles can access inventory
     children: [
       { name: "Stock Levels", href: "/dashboard/inventory/stock-levels" },
       { name: "Products", href: "/dashboard/inventory/products" },
@@ -51,6 +67,7 @@ const navigation = [
     name: "Sales",
     href: "/sales",
     icon: ShoppingCart,
+    allowedRoles: ["admin", "manager", "user"], // All roles can access sales
     children: [
       { name: "Point of Sale", href: "/sales/pos" },
       { name: "Transactions", href: "/sales/transactions" },
@@ -60,27 +77,39 @@ const navigation = [
     name: "Costs",
     href: "/costs",
     icon: DollarSign,
+    allowedRoles: ["admin", "manager", "user"], // All roles can access costs
   },
   {
     name: "Analytics",
     href: "/analytics",
     icon: BarChart3,
+    allowedRoles: ["admin", "manager"], // Only admin and manager can access analytics
   },
   {
     name: "Notifications",
     href: "/dashboard/notifications",
     icon: Bell,
+    allowedRoles: ["admin", "manager", "user"], // All roles can access notifications
   },
   {
     name: "Users",
     href: "/dashboard/users",
     icon: Users,
     permission: "users.read",
+    allowedRoles: ["admin", "manager"], // Only admin and manager can access user management
+  },
+  {
+    name: "Audit",
+    href: "/audit",
+    icon: Activity,
+    permission: "audit.read",
+    allowedRoles: ["admin", "manager"], // Only admin and manager can access audit
   },
   {
     name: "System",
     href: "/system",
     icon: Settings,
+    allowedRoles: ["admin"], // Only admin can access system settings
   },
 ];
 
@@ -162,9 +191,24 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+          <nav className="flex-1 px-4 py-4 space-y-1  overflow-y-auto">
             {navigation
-              .filter((item) => !item.permission)
+              .filter((item) => {
+                // First check role-based access
+                if (item.allowedRoles && user?.role) {
+                  const hasRoleAccess = item.allowedRoles.includes(user.role);
+                  if (!hasRoleAccess) {
+                    return false;
+                  }
+                }
+
+                // Then check permission-based access (if specified)
+                if (item.permission) {
+                  return hasPermission(user, item.permission);
+                }
+
+                return true;
+              })
               .map((item) => {
                 const isActive = isActiveRoute(item.href);
                 const isExpanded = expandedItems.includes(item.name);
@@ -260,6 +304,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <LogOut className="mr-2 h-4 w-4" />
               Sign Out
             </Button>
+            <ModeToggle />
           </div>
         </div>
       </div>
@@ -282,7 +327,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         </div>
 
         {/* Page content */}
-        <main className="flex-1 -mt-[100%] min-h-[calc(100vh-4rem)] lg:min-h-screen w-full">
+        <main className="flex-1  min-h-[calc(100vh-4rem)] lg:min-h-screen w-full">
           {children}
         </main>
       </div>

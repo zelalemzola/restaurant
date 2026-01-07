@@ -81,6 +81,27 @@ export async function PATCH(request: NextRequest) {
           userId: user.id,
         });
 
+        // Create cost expense record for stock additions
+        if (
+          updates.stockAdjustment.adjustment > 0 &&
+          product.costPrice &&
+          product.costPrice > 0
+        ) {
+          const { costExpenseService } = await import(
+            "@/lib/services/costExpenseService"
+          );
+          await costExpenseService.recordCostAsExpense(
+            product._id.toString(),
+            product.costPrice,
+            updates.stockAdjustment.adjustment,
+            {
+              category: "inventory",
+              updatedBy: user.id,
+              reason: updates.stockAdjustment.reason || "Bulk stock adjustment",
+            }
+          );
+        }
+
         modifiedCount++;
       }
     }

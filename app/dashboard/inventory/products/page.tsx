@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { LoadingCard } from "@/components/ui/loading";
-import { ErrorBoundary, ErrorFallback } from "@/components/ui/error-boundary";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +66,7 @@ import {
   KeyboardShortcut,
 } from "@/hooks/use-keyboard-shortcuts";
 import { useToast } from "@/hooks/use-toast";
+import { useRealTimeUpdates } from "@/lib/hooks/useRealTimeUpdates";
 import type { Product } from "@/types";
 
 export default function ProductsPage() {
@@ -87,6 +88,15 @@ export default function ProductsPage() {
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { toast } = useToast();
+
+  // Enable real-time updates for products and inventory
+  useRealTimeUpdates({
+    enableProducts: true,
+    enableInventory: true,
+    enableSales: false,
+    enableCosts: false,
+    enableNotifications: false,
+  });
 
   // Fetch products with filters
   const {
@@ -455,7 +465,7 @@ export default function ProductsPage() {
 
   if (productsError) {
     return (
-      <ErrorBoundary fallback={ErrorFallback}>
+      <ErrorBoundary>
         <AppLayout>
           <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
             <Card>
@@ -472,7 +482,7 @@ export default function ProductsPage() {
   }
 
   return (
-    <ErrorBoundary fallback={ErrorFallback}>
+    <ErrorBoundary>
       <AppLayout>
         <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
           {/* Header */}

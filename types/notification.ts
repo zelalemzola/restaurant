@@ -1,21 +1,55 @@
 // Notification type definitions
-import { ObjectId } from 'mongoose';
+import { ObjectId } from "mongoose";
 
 export interface Notification {
   _id: string;
-  type: "low-stock" | "system" | "alert";
+  type:
+    | "product_created"
+    | "product_updated"
+    | "product_deleted"
+    | "cost_created"
+    | "cost_updated"
+    | "cost_deleted"
+    | "inventory_updated"
+    | "sale_created"
+    | "low_stock"
+    | "system"
+    | "user_created"
+    | "user_updated"
+    | "user_deleted";
   title: string;
   message: string;
-  productId?: string | ObjectId; // For low-stock notifications
-  isRead: boolean;
+  data?: any;
+  userId: string;
+  read: boolean;
+  priority: "low" | "medium" | "high";
+  category: string;
   createdAt: Date;
+  expiresAt?: Date;
 }
 
-export type NotificationType = "low-stock" | "system" | "alert";
+export type NotificationType =
+  | "product_created"
+  | "product_updated"
+  | "product_deleted"
+  | "cost_created"
+  | "cost_updated"
+  | "cost_deleted"
+  | "inventory_updated"
+  | "sale_created"
+  | "low_stock"
+  | "system"
+  | "user_created"
+  | "user_updated"
+  | "user_deleted";
 
 export interface CreateNotificationRequest {
   type: NotificationType;
   title: string;
   message: string;
-  productId?: string;
+  data?: any;
+  userId?: string;
+  priority?: "low" | "medium" | "high";
+  category?: string;
+  expiresAt?: Date;
 }

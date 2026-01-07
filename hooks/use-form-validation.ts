@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { toastHelpers } from "@/hooks/use-toast";
+import { toast } from "@/hooks/use-toast";
 
 interface ValidationRule {
   required?: boolean;
@@ -187,7 +187,11 @@ export function useFormValidation({
 
         if (!isFormValid) {
           if (showErrorToast) {
-            toastHelpers.error("Please fix the errors in the form");
+            toast({
+              title: "Validation Error",
+              description: "Please fix the errors in the form",
+              variant: "destructive",
+            });
           }
           return;
         }
@@ -196,14 +200,21 @@ export function useFormValidation({
         await onSubmit(values);
 
         if (showSuccessToast) {
-          toastHelpers.success("Form submitted successfully");
+          toast({
+            title: "Success",
+            description: "Form submitted successfully",
+          });
         }
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "An error occurred";
 
         if (showErrorToast) {
-          toastHelpers.error(errorMessage);
+          toast({
+            title: "Error",
+            description: errorMessage,
+            variant: "destructive",
+          });
         }
 
         if (onError) {

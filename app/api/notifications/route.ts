@@ -1,10 +1,34 @@
-// Notifications API routes
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb";
-import { Notification, Product } from "@/lib/models";
+import { notificationService } from "@/lib/services/NotificationService";
 import { z } from "zod";
 
 export const runtime = "nodejs";
+
+// Validation schemas
+const createNotificationSchema = z.object({
+  type: z.enum([
+    "product_created",
+    "product_updated",
+    "product_deleted",
+    "cost_created",
+    "cost_updated",
+    "cost_deleted",
+    "inventory_updated",
+    "sale_created",
+    "low_stock",
+    "system",
+    "user_created",
+    "user_updated",
+    "user_deleted",
+  ]),
+  title: z.string().min(1, "Title is required"),
+  message: z.string().min(1, "Message is required"),
+  data: z.any().optional(),
+  userId: z.string().optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  category: z.string().optional(),
+  expiresAt: z.string().datetime().optional(),
+});
 
 interface ApiError {
   success: false;
@@ -22,86 +46,93 @@ interface ApiSuccess<T> {
 
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
-const createNotificationSchema = z.object({
-  type: z.enum(["low-stock", "system", "alert"]),
-  title: z.string().min(1, "Title is required"),
-  message: z.string().min(1, "Message is required"),
-  productId: z.string().optional(),
-});
-
-// GET /api/notifications - Get all notifications
+// GET /api/notifications - Get notifications
 export async function GET(request: NextRequest) {
   try {
-    await connectDB();
-
     const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("userId") || "system";
     const unreadOnly = searchParams.get("unreadOnly") === "true";
-    const type = searchParams.get("type");
+    const category = searchParams.get("category");
+    const limit = parseInt(searchParams.get("limit") || "50");
+    const skip = parseInt(searchParams.get("skip") || "0");
 
-    const filter: any = {};
-    if (unreadOnly) {
-      filter.isRead = false;
-    }
-    if (type) {
-      filter.type = type;
-    }
+    const notifications = await notificationService.getNotifications(userId, {
+      unreadOnly,
+      category: category || undefined,
+      limit,
+      skip,
+    });
 
-    const notifications = await Notification.find(filter)
-      .populate("productId", "name type metric currentQuantity minStockLevel")
-      .sort({ createdAt: -1 })
-      .limit(100);
+    const unreadCount = await notificationService.getUnreadCount(userId);
 
-    const response: ApiResponse<typeof notifications> = {
+    const response: ApiResponse<{
+      notifications: any[];
+      unreadCount: number;
+      pagination: {
+        limit: number;
+        skip: number;
+        total: number;
+      };
+    }> = {
       success: true,
-      data: notifications,
+      data: {
+        notifications,
+        unreadCount,
+        pagination: {
+          limit,
+          skip,
+          total: notifications.length,
+        },
+      },
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Error fetching notifications:", error);
-
-    const response: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: "FETCH_ERROR",
-        message: "Failed to fetch notifications",
+    console.error("Notifications GET error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "NOTIFICATIONS_FETCH_ERROR",
+          message: "Failed to fetch notifications",
+        },
       },
-    };
-    return NextResponse.json(response, { status: 500 });
+      { status: 500 }
+    );
   }
 }
 
-// POST /api/notifications - Create a new notification
+// POST /api/notifications - Create notification
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+
+    // Validate request body
     const validatedData = createNotificationSchema.parse(body);
 
-    await connectDB();
+    const notification = await notificationService.createNotification({
+      type: validatedData.type,
+      title: validatedData.title,
+      message: validatedData.message,
+      data: validatedData.data,
+      userId: validatedData.userId,
+      priority: validatedData.priority,
+      category: validatedData.category,
+      expiresAt: validatedData.expiresAt
+        ? new Date(validatedData.expiresAt)
+        : undefined,
+    });
 
-    // If it's a low-stock notification, verify the product exists
-    if (validatedData.type === "low-stock" && validatedData.productId) {
-      const product = await Product.findById(validatedData.productId);
-      if (!product) {
-        const response: ApiResponse<never> = {
+    if (!notification) {
+      return NextResponse.json(
+        {
           success: false,
           error: {
-            code: "PRODUCT_NOT_FOUND",
-            message: "Product not found",
+            code: "NOTIFICATION_CREATE_ERROR",
+            message: "Failed to create notification",
           },
-        };
-        return NextResponse.json(response, { status: 404 });
-      }
-    }
-
-    const notification = new Notification(validatedData);
-    await notification.save();
-
-    // Populate product details if it's a low-stock notification
-    if (notification.productId) {
-      await notification.populate(
-        "productId",
-        "name type metric currentQuantity minStockLevel"
+        },
+        { status: 500 }
       );
     }
 
@@ -112,27 +143,30 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(response, { status: 201 });
   } catch (error) {
-    console.error("Error creating notification:", error);
-
     if (error instanceof z.ZodError) {
-      const response: ApiResponse<never> = {
-        success: false,
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Invalid request data",
-          details: error.issues,
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Invalid input data",
+            details: error,
+          },
         },
-      };
-      return NextResponse.json(response, { status: 400 });
+        { status: 400 }
+      );
     }
 
-    const response: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: "CREATE_ERROR",
-        message: "Failed to create notification",
+    console.error("Notification POST error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "NOTIFICATION_CREATE_ERROR",
+          message: "Failed to create notification",
+        },
       },
-    };
-    return NextResponse.json(response, { status: 500 });
+      { status: 500 }
+    );
   }
 }

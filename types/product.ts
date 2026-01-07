@@ -1,5 +1,5 @@
 // Product-related type definitions
-import { ObjectId } from 'mongoose';
+import { ObjectId } from "mongoose";
 
 export interface ProductGroup {
   _id: string;
@@ -19,6 +19,7 @@ export interface Product {
   minStockLevel: number;
   costPrice?: number; // Required for stock and combination
   sellingPrice?: number; // Required for sellable and combination
+  stockTrackingEnabled?: boolean; // Enable/disable stock tracking for this product
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,6 +35,7 @@ export interface CreateProductRequest {
   minStockLevel: number;
   costPrice?: number;
   sellingPrice?: number;
+  stockTrackingEnabled?: boolean;
 }
 
 export interface UpdateProductRequest extends Partial<CreateProductRequest> {

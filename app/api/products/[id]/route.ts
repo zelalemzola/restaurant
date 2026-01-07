@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import { Product, ProductGroup } from "@/lib/models";
 import { createProductSchema } from "@/lib/validations";
+import { eventBroadcaster } from "@/lib/services/eventBroadcaster";
 import mongoose from "mongoose";
 
 export const runtime = "nodejs";
@@ -162,12 +163,18 @@ export async function PUT(
     }
 
     // Remove any _id field from update data if it exists
-    const { _id, ...updateData } = validatedData;
+    const updateData = { ...validatedData };
+    if ("_id" in updateData) {
+      delete (updateData as any)._id;
+    }
 
     const product = await Product.findByIdAndUpdate(id, updateData, {
       new: true,
       runValidators: true,
     }).populate("groupId", "name description");
+
+    // Broadcast real-time update
+    eventBroadcaster.broadcastProductUpdated(product?.toObject());
 
     const response: ApiResponse<typeof product> = {
       success: true,
@@ -233,6 +240,9 @@ export async function DELETE(
       };
       return NextResponse.json(response, { status: 404 });
     }
+
+    // Broadcast real-time update
+    eventBroadcaster.broadcastProductDeleted(id);
 
     const response: ApiResponse<{ message: string }> = {
       success: true,

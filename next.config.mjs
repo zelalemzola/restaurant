@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
   // Enable experimental features for better performance
   experimental: {
     optimizePackageImports: [
@@ -32,7 +31,7 @@ const nextConfig: NextConfig = {
 
   // Bundle analyzer configuration
   ...(process.env.ANALYZE === "true" && {
-    webpack: (config: any) => {
+    webpack: (config) => {
       const { BundleAnalyzerPlugin } = require("@next/bundle-analyzer")();
       config.plugins.push(new BundleAnalyzerPlugin());
       return config;
@@ -99,7 +98,7 @@ const nextConfig: NextConfig = {
   },
 
   // Webpack optimizations
-  webpack: (config: any, { dev, isServer }: any) => {
+  webpack: (config, { dev, isServer }) => {
     // Production optimizations
     if (!dev && !isServer) {
       config.optimization = {

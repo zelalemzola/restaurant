@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   useGetStockLevelsQuery,
   useGetProductGroupsQuery,
@@ -35,6 +35,7 @@ import { Separator } from "@/components/ui/separator";
 import { StockAdjustmentDialog } from "@/components/inventory/StockAdjustmentDialog";
 import { StockAlertsPanel } from "@/components/inventory/StockAlertsPanel";
 import { useStockMonitoring } from "@/hooks/use-stock-monitoring";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import {
   Search,
   Package,
@@ -68,27 +69,30 @@ export default function StockLevelsPage() {
     showToastAlerts: true,
   });
 
-  const {
-    data: stockData,
-    isLoading,
-    error,
-    refetch,
-  } = useGetStockLevelsQuery(
-    {
+  // Memoize query parameters to prevent unnecessary re-renders
+  const queryParams = useMemo(
+    () => ({
       page,
       limit,
       search: search || undefined,
       type: typeFilter || undefined,
       groupId: groupFilter || undefined,
       stockStatus: statusFilter || undefined,
-    },
-    {
-      // Enable real-time updates with polling every 30 seconds
-      pollingInterval: autoRefresh ? 30000 : 0,
-      refetchOnFocus: true,
-      refetchOnReconnect: true,
-    }
+    }),
+    [page, limit, search, typeFilter, groupFilter, statusFilter]
   );
+
+  const {
+    data: stockData,
+    isLoading,
+    error,
+    refetch,
+  } = useGetStockLevelsQuery(queryParams, {
+    // Enable real-time updates with polling every 30 seconds
+    pollingInterval: autoRefresh ? 30000 : 0,
+    refetchOnFocus: true,
+    refetchOnReconnect: true,
+  });
 
   const { data: groupsData } = useGetProductGroupsQuery();
 
@@ -99,96 +103,118 @@ export default function StockLevelsPage() {
     }
   }, [stockData]);
 
-  // Auto-refresh toggle
-  const toggleAutoRefresh = () => {
-    setAutoRefresh(!autoRefresh);
-  };
-
-  const toggleAlertsPanel = () => {
-    setShowAlertsPanel(!showAlertsPanel);
-  };
-
-  const handleSearchChange = (value: string) => {
+  const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
     setPage(1); // Reset to first page when searching
-  };
+  }, []);
 
-  const handleFilterChange = () => {
-    setPage(1); // Reset to first page when filtering
-  };
+  // Stable filter handlers to prevent infinite loops
+  const handleTypeChange = useCallback((value: string) => {
+    setTypeFilter(value === "all" ? "" : value);
+    setPage(1);
+  }, []);
 
-  const handleAdjustStock = (productId: string) => {
+  const handleGroupChange = useCallback((value: string) => {
+    setGroupFilter(value === "all" ? "" : value);
+    setPage(1);
+  }, []);
+
+  const handleStatusChange = useCallback((value: string) => {
+    setStatusFilter(value === "all" ? "" : value);
+    setPage(1);
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setSearch("");
+    setTypeFilter("");
+    setGroupFilter("");
+    setStatusFilter("");
+    setPage(1);
+  }, []);
+
+  const handleAdjustStock = useCallback((productId: string) => {
     setSelectedProduct(productId);
     setAdjustmentDialogOpen(true);
-  };
+  }, []);
 
-  const getStatusBadge = (
-    status: string,
-    currentQuantity: number,
-    minStockLevel: number
-  ) => {
-    const percentage =
-      minStockLevel > 0 ? (currentQuantity / minStockLevel) * 100 : 100;
+  // Auto-refresh toggle
+  const toggleAutoRefresh = useCallback(() => {
+    setAutoRefresh(!autoRefresh);
+  }, [autoRefresh]);
 
-    switch (status) {
-      case "in-stock":
-        return (
-          <Badge
-            variant="default"
-            className="bg-green-100 text-green-800 hover:bg-green-200"
-          >
-            <CheckCircle className="w-3 h-3 mr-1" />
-            In Stock
-            {percentage > 150 && (
-              <TrendingUp className="w-3 h-3 ml-1 text-green-600" />
-            )}
-          </Badge>
-        );
-      case "low-stock":
-        return (
-          <Badge
-            variant="destructive"
-            className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
-          >
-            <AlertTriangle className="w-3 h-3 mr-1" />
-            Low Stock
-            <TrendingDown className="w-3 h-3 ml-1 text-yellow-600" />
-          </Badge>
-        );
-      case "out-of-stock":
-        return (
-          <Badge variant="destructive">
-            <XCircle className="w-3 h-3 mr-1" />
-            Out of Stock
-          </Badge>
-        );
-      default:
-        return null;
-    }
-  };
+  const toggleAlertsPanel = useCallback(() => {
+    setShowAlertsPanel(!showAlertsPanel);
+  }, [showAlertsPanel]);
 
-  const getStockLevelBar = (currentQuantity: number, minStockLevel: number) => {
-    const percentage =
-      minStockLevel > 0
-        ? Math.min((currentQuantity / (minStockLevel * 2)) * 100, 100)
-        : 100;
-    let colorClass = "bg-green-500";
+  const getStatusBadge = useCallback(
+    (status: string, currentQuantity: number, minStockLevel: number) => {
+      const percentage =
+        minStockLevel > 0 ? (currentQuantity / minStockLevel) * 100 : 100;
 
-    if (currentQuantity <= minStockLevel) {
-      colorClass = currentQuantity === 0 ? "bg-red-500" : "bg-yellow-500";
-    }
+      switch (status) {
+        case "in-stock":
+          return (
+            <Badge
+              variant="default"
+              className="bg-green-100 text-green-800 hover:bg-green-200"
+            >
+              <CheckCircle className="w-3 h-3 mr-1" />
+              In Stock
+              {percentage > 150 && (
+                <TrendingUp className="w-3 h-3 ml-1 text-green-600" />
+              )}
+            </Badge>
+          );
+        case "low-stock":
+          return (
+            <Badge
+              variant="destructive"
+              className="bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+            >
+              <AlertTriangle className="w-3 h-3 mr-1" />
+              Low Stock
+              <TrendingDown className="w-3 h-3 ml-1 text-yellow-600" />
+            </Badge>
+          );
+        case "out-of-stock":
+          return (
+            <Badge variant="destructive">
+              <XCircle className="w-3 h-3 mr-1" />
+              Out of Stock
+            </Badge>
+          );
+        default:
+          return null;
+      }
+    },
+    []
+  );
 
-    return (
-      <div className="w-full bg-gray-200 rounded-full h-2">
-        <div
-          className={`h-2 rounded-full transition-all duration-300 ${colorClass}`}
-          style={{ width: `${Math.max(percentage, 2)}%` }}
-        />
-      </div>
-    );
-  };
+  const getStockLevelBar = useCallback(
+    (currentQuantity: number, minStockLevel: number) => {
+      const percentage =
+        minStockLevel > 0
+          ? Math.min((currentQuantity / (minStockLevel * 2)) * 100, 100)
+          : 100;
+      let colorClass = "bg-green-500";
 
-  const formatLastUpdated = (date: Date) => {
+      if (currentQuantity <= minStockLevel) {
+        colorClass = currentQuantity === 0 ? "bg-red-500" : "bg-yellow-500";
+      }
+
+      return (
+        <div className="w-full bg-gray-200 rounded-full h-2">
+          <div
+            className={`h-2 rounded-full transition-all duration-300 ${colorClass}`}
+            style={{ width: `${Math.max(percentage, 2)}%` }}
+          />
+        </div>
+      );
+    },
+    []
+  );
+
+  const formatLastUpdated = useCallback((date: Date) => {
     const now = new Date();
     const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
@@ -200,9 +226,9 @@ export default function StockLevelsPage() {
     } else {
       return date.toLocaleTimeString();
     }
-  };
+  }, []);
 
-  const getTypeColor = (type: string) => {
+  const getTypeColor = useCallback((type: string) => {
     switch (type) {
       case "stock":
         return "bg-blue-100 text-blue-800";
@@ -211,7 +237,17 @@ export default function StockLevelsPage() {
       default:
         return "bg-gray-100 text-gray-800";
     }
-  };
+  }, []);
+
+  // Memoize data extraction to prevent unnecessary re-renders
+  const { stockLevels, pagination, summary, groups } = useMemo(() => {
+    return {
+      stockLevels: stockData?.success ? stockData.data.stockLevels : [],
+      pagination: stockData?.success ? stockData.data.pagination : null,
+      summary: stockData?.success ? stockData.data.summary : null,
+      groups: groupsData?.success ? groupsData.data : [],
+    };
+  }, [stockData, groupsData]);
 
   if (error) {
     return (
@@ -225,11 +261,6 @@ export default function StockLevelsPage() {
       </div>
     );
   }
-
-  const stockLevels = stockData?.success ? stockData.data.stockLevels : [];
-  const pagination = stockData?.success ? stockData.data.pagination : null;
-  const summary = stockData?.success ? stockData.data.summary : null;
-  const groups = groupsData?.success ? groupsData.data : [];
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -357,68 +388,57 @@ export default function StockLevelsPage() {
                 className="pl-8"
               />
             </div>
-            <Select
-              value={typeFilter || "all"}
-              onValueChange={(value) => {
-                setTypeFilter(value === "all" ? "" : value);
-                handleFilterChange();
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="stock">Stock Items</SelectItem>
-                <SelectItem value="combination">Combination Items</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={groupFilter || "all"}
-              onValueChange={(value) => {
-                setGroupFilter(value === "all" ? "" : value);
-                handleFilterChange();
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Groups" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Groups</SelectItem>
-                {groups.map((group) => (
-                  <SelectItem key={group._id} value={group._id}>
-                    {group.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusFilter || "all"}
-              onValueChange={(value) => {
-                setStatusFilter(value === "all" ? "" : value);
-                handleFilterChange();
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="in-stock">In Stock</SelectItem>
-                <SelectItem value="low-stock">Low Stock</SelectItem>
-                <SelectItem value="out-of-stock">Out of Stock</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSearch("");
-                setTypeFilter("");
-                setGroupFilter("");
-                setStatusFilter("");
-                setPage(1);
-              }}
-            >
+            <ErrorBoundary>
+              <Select
+                value={typeFilter || "all"}
+                onValueChange={handleTypeChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="stock">Stock Items</SelectItem>
+                  <SelectItem value="sellable">Sellable Items</SelectItem>
+                  <SelectItem value="combination">Combination Items</SelectItem>
+                </SelectContent>
+              </Select>
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <Select
+                value={groupFilter || "all"}
+                onValueChange={handleGroupChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Groups" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Groups</SelectItem>
+                  {groups.map((group) => (
+                    <SelectItem key={group._id} value={group._id}>
+                      {group.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </ErrorBoundary>
+            <ErrorBoundary>
+              <Select
+                value={statusFilter || "all"}
+                onValueChange={handleStatusChange}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="in-stock">In Stock</SelectItem>
+                  <SelectItem value="low-stock">Low Stock</SelectItem>
+                  <SelectItem value="out-of-stock">Out of Stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </ErrorBoundary>
+            <Button variant="outline" onClick={handleClearFilters}>
               Clear Filters
             </Button>
           </div>

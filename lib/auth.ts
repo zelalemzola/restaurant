@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { MongoClient } from "mongodb";
+import bcrypt from "bcryptjs";
 
 const client = new MongoClient(
   process.env.MONGODB_URI || "mongodb://localhost:27017/restaurant-erp"
@@ -13,6 +14,14 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: false,
+  },
+  password: {
+    hash: async (password: string) => {
+      return await bcrypt.hash(password, 12);
+    },
+    verify: async (password: string, hash: string) => {
+      return await bcrypt.compare(password, hash);
+    },
   },
   socialProviders: {
     google: {

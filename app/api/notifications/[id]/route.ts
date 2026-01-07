@@ -1,7 +1,6 @@
-// Individual notification API routes
 import { NextRequest, NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb";
-import { Notification } from "@/lib/models";
+import { notificationService } from "@/lib/services/NotificationService";
+import mongoose from "mongoose";
 
 export const runtime = "nodejs";
 
@@ -21,7 +20,7 @@ interface ApiSuccess<T> {
 
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
-// PATCH /api/notifications/[id] - Mark notification as read/unread
+// PATCH /api/notifications/[id] - Update notification (mark as read/unread)
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,59 +28,130 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { isRead } = body;
+    const { read } = body;
 
-    if (typeof isRead !== "boolean") {
-      const response: ApiResponse<never> = {
-        success: false,
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "isRead must be a boolean value",
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INVALID_ID",
+            message: "Invalid notification ID",
+          },
         },
-      };
-      return NextResponse.json(response, { status: 400 });
+        { status: 400 }
+      );
     }
 
-    await connectDB();
-
-    const notification = await Notification.findByIdAndUpdate(
-      id,
-      { isRead },
-      { new: true }
-    ).populate("productId", "name type metric currentQuantity minStockLevel");
-
-    if (!notification) {
-      const response: ApiResponse<never> = {
-        success: false,
-        error: {
-          code: "NOTIFICATION_NOT_FOUND",
-          message: "Notification not found",
+    if (typeof read !== "boolean") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INVALID_DATA",
+            message: "Read status must be a boolean",
+          },
         },
-      };
-      return NextResponse.json(response, { status: 404 });
+        { status: 400 }
+      );
     }
 
-    const response: ApiResponse<typeof notification> = {
+    const success = read
+      ? await notificationService.markAsRead(id)
+      : await notificationService.markAsUnread(id);
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "NOTIFICATION_NOT_FOUND",
+            message: "Notification not found",
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    const response: ApiResponse<{ message: string }> = {
       success: true,
-      data: notification,
+      data: { message: `Notification marked as ${read ? "read" : "unread"}` },
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Error updating notification:", error);
-
-    const response: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: "UPDATE_ERROR",
-        message: "Failed to update notification",
+    console.error("Notification PATCH error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "NOTIFICATION_UPDATE_ERROR",
+          message: "Failed to update notification",
+        },
       },
-    };
-    return NextResponse.json(response, { status: 500 });
+      { status: 500 }
+    );
   }
 }
 
-// DELETE /api/notifications/[id] - Delete a notification
+// PUT /api/notifications/[id] - Mark notification as read
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INVALID_ID",
+            message: "Invalid notification ID",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const success = await notificationService.markAsRead(id);
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "NOTIFICATION_NOT_FOUND",
+            message: "Notification not found or already read",
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    const response: ApiResponse<{ message: string }> = {
+      success: true,
+      data: { message: "Notification marked as read" },
+    };
+
+    return NextResponse.json(response);
+  } catch (error) {
+    console.error("Notification PUT error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "NOTIFICATION_UPDATE_ERROR",
+          message: "Failed to update notification",
+        },
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/notifications/[id] - Delete notification
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -89,37 +159,51 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    await connectDB();
-
-    const notification = await Notification.findByIdAndDelete(id);
-
-    if (!notification) {
-      const response: ApiResponse<never> = {
-        success: false,
-        error: {
-          code: "NOTIFICATION_NOT_FOUND",
-          message: "Notification not found",
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "INVALID_ID",
+            message: "Invalid notification ID",
+          },
         },
-      };
-      return NextResponse.json(response, { status: 404 });
+        { status: 400 }
+      );
     }
 
-    const response: ApiResponse<{ id: string }> = {
+    const success = await notificationService.deleteNotification(id);
+
+    if (!success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "NOTIFICATION_NOT_FOUND",
+            message: "Notification not found",
+          },
+        },
+        { status: 404 }
+      );
+    }
+
+    const response: ApiResponse<{ message: string }> = {
       success: true,
-      data: { id },
+      data: { message: "Notification deleted successfully" },
     };
 
     return NextResponse.json(response);
   } catch (error) {
-    console.error("Error deleting notification:", error);
-
-    const response: ApiResponse<never> = {
-      success: false,
-      error: {
-        code: "DELETE_ERROR",
-        message: "Failed to delete notification",
+    console.error("Notification DELETE error:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: "NOTIFICATION_DELETE_ERROR",
+          message: "Failed to delete notification",
+        },
       },
-    };
-    return NextResponse.json(response, { status: 500 });
+      { status: 500 }
+    );
   }
 }

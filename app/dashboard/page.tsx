@@ -1,13 +1,15 @@
 "use client";
 
 import { useAuth } from "@/lib/providers/AuthProvider";
+import { useRealTimeUpdates } from "@/lib/hooks/useRealTimeUpdates";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { DashboardHeader } from "@/components/ui/dashboard-header";
 import { MetricCard } from "@/components/ui/metric-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { QuickActions } from "@/components/dashboard/quick-actions";
+import { LowStockSection } from "@/components/dashboard/LowStockSection";
 import { LoadingPage, LoadingCard } from "@/components/ui/loading";
-import { ErrorBoundary, ErrorFallback } from "@/components/ui/error-boundary";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import {
   ResponsiveContainer,
   ResponsiveGrid,
@@ -20,10 +22,25 @@ import {
   Package,
   Bell,
   TrendingUp,
+  BarChart3,
 } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
+import { CardHeader } from "@/components/ui/card";
+import { CardTitle } from "@/components/ui/card";
 
 export default function DashboardPage() {
   const { user, isLoading: authLoading } = useAuth();
+
+  // Enable real-time updates for all dashboard data
+  useRealTimeUpdates({
+    enableProducts: true,
+    enableInventory: true,
+    enableSales: true,
+    enableCosts: true,
+    enableNotifications: true,
+  });
+
   const {
     data: dashboardData,
     isLoading: dashboardLoading,
@@ -37,7 +54,7 @@ export default function DashboardPage() {
   const dashboard = dashboardData?.success ? dashboardData.data : null;
 
   return (
-    <ErrorBoundary fallback={ErrorFallback}>
+    <ErrorBoundary>
       <AppLayout>
         <ResponsiveContainer size="full" padding="md">
           <DashboardHeader
@@ -182,8 +199,68 @@ export default function DashboardPage() {
             />
           </ResponsiveGrid>
 
+          {/* Cost Expenses Summary */}
+          {(dashboard as any)?.costExpenses &&
+            (dashboard as any).costExpenses.total > 0 && (
+              <Card className="mb-6 lg:mb-8">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5" />
+                    Monthly Cost Expenses
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-muted rounded-lg">
+                      <div className="text-2xl font-bold">
+                        $
+                        {((dashboard as any)?.costExpenses?.total || 0).toFixed(
+                          2
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Total Expenses
+                      </p>
+                    </div>
+                    <div className="text-center p-4 bg-blue-50 rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600">
+                        $
+                        {(
+                          (dashboard as any)?.costExpenses?.inventory || 0
+                        ).toFixed(2)}
+                      </div>
+                      <p className="text-sm text-blue-600">Inventory</p>
+                    </div>
+                    <div className="text-center p-4 bg-green-50 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600">
+                        $
+                        {(
+                          (dashboard as any)?.costExpenses?.operational || 0
+                        ).toFixed(2)}
+                      </div>
+                      <p className="text-sm text-green-600">Operational</p>
+                    </div>
+                    <div className="text-center p-4 bg-orange-50 rounded-lg">
+                      <div className="text-2xl font-bold text-orange-600">
+                        $
+                        {(
+                          (dashboard as any)?.costExpenses?.overhead || 0
+                        ).toFixed(2)}
+                      </div>
+                      <p className="text-sm text-orange-600">Overhead</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
           {/* Dashboard Content Grid */}
           <ResponsiveGrid cols={{ default: 1, xl: 3 }} gap="lg">
+            {/* Low Stock Section - Takes full width on smaller screens, 1 column on xl */}
+            <div className="xl:col-span-1">
+              <LowStockSection maxItems={5} />
+            </div>
+
             {/* Recent Transactions - Takes 2 columns on xl screens */}
             <div className="xl:col-span-2">
               {dashboardLoading ? (
@@ -195,22 +272,25 @@ export default function DashboardPage() {
                 />
               )}
             </div>
-
-            {/* Quick Actions - Takes 1 column */}
-            <div className="xl:col-span-1">
-              <QuickActions />
-            </div>
           </ResponsiveGrid>
+
+          {/* Quick Actions Section */}
+          <div className="mt-6">
+            <QuickActions />
+          </div>
 
           {/* Error State */}
           {error && (
             <div className="mt-6">
-              <ErrorFallback
-                error={new Error("Failed to load dashboard data")}
-                resetError={() => window.location.reload()}
-                title="Dashboard Error"
-                compact={false}
-              />
+              <div className="p-4 border border-red-200 rounded-md bg-red-50">
+                <p className="text-red-800">Failed to load dashboard data</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-2 px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Retry
+                </button>
+              </div>
             </div>
           )}
         </ResponsiveContainer>

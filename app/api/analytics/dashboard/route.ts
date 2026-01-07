@@ -45,11 +45,12 @@ export async function GET(request: NextRequest) {
       transactionCount: 0,
     };
 
-    // Get low stock items
+    // Get low stock items (only those with stock tracking enabled)
     const lowStockItems = await Product.find({
       $expr: {
         $lte: ["$currentQuantity", "$minStockLevel"],
       },
+      stockTrackingEnabled: { $ne: false }, // Only include products with stock tracking enabled
     })
       .select("name currentQuantity minStockLevel")
       .lean();

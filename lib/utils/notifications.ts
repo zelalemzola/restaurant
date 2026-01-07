@@ -1,5 +1,6 @@
 // Notification utility functions
-import { Product, Notification } from "@/lib/models";
+import { Product } from "@/lib/models";
+import { notificationService } from "@/lib/services/NotificationService";
 import connectDB from "@/lib/mongodb";
 
 export interface LowStockCheckResult {
@@ -17,10 +18,10 @@ export interface LowStockCheckResult {
 export async function checkAndCreateLowStockNotifications(): Promise<LowStockCheckResult> {
   await connectDB();
 
-  // Find products that are at or below minimum stock level
+  // Find products that are at or below minimum stock level (all types with stock tracking enabled)
   const lowStockProducts = await Product.find({
     $expr: { $lte: ["$currentQuantity", "$minStockLevel"] },
-    type: { $in: ["stock", "combination"] }, // Only check stock and combination items
+    stockTrackingEnabled: { $ne: false }, // Include products where stockTrackingEnabled is true or undefined (default)
   }).populate("groupId", "name");
 
   const result: LowStockCheckResult = {
@@ -30,23 +31,37 @@ export async function checkAndCreateLowStockNotifications(): Promise<LowStockChe
 
   for (const product of lowStockProducts) {
     // Check if we already have an unread low-stock notification for this product
-    const existingNotification = await Notification.findOne({
-      type: "low-stock",
-      productId: product._id,
-      isRead: false,
-    });
+    const existingNotifications = await notificationService.getNotifications(
+      "system",
+      {
+        unreadOnly: true,
+        category: "inventory",
+      }
+    );
+
+    const hasExistingLowStockNotification = existingNotifications.some(
+      (notification) =>
+        notification.type === "low_stock" &&
+        notification.data?.productId === product._id.toString()
+    );
 
     // Only create a new notification if one doesn't already exist
-    if (!existingNotification) {
-      const notification = new Notification({
-        type: "low-stock",
+    if (!hasExistingLowStockNotification) {
+      await notificationService.createNotification({
+        type: "low_stock",
         title: `Low Stock Alert: ${product.name}`,
         message: `${product.name} is running low. Current stock: ${product.currentQuantity} ${product.metric}, Minimum level: ${product.minStockLevel} ${product.metric}`,
-        productId: product._id,
-        isRead: false,
+        data: {
+          productId: product._id.toString(),
+          productName: product.name,
+          currentQuantity: product.currentQuantity,
+          minStockLevel: product.minStockLevel,
+          metric: product.metric,
+        },
+        userId: "system",
+        priority: "high",
+        category: "inventory",
       });
-
-      await notification.save();
       result.notificationsCreated++;
     }
 
@@ -69,30 +84,44 @@ export async function checkProductLowStock(
   await connectDB();
 
   const product = await Product.findById(productId);
-  if (!product || !["stock", "combination"].includes(product.type)) {
+  if (!product || product.stockTrackingEnabled === false) {
     return false;
   }
 
   // Check if product is at or below minimum stock level
   if (product.currentQuantity <= product.minStockLevel) {
     // Check if we already have an unread low-stock notification for this product
-    const existingNotification = await Notification.findOne({
-      type: "low-stock",
-      productId: product._id,
-      isRead: false,
-    });
+    const existingNotifications = await notificationService.getNotifications(
+      "system",
+      {
+        unreadOnly: true,
+        category: "inventory",
+      }
+    );
+
+    const hasExistingLowStockNotification = existingNotifications.some(
+      (notification) =>
+        notification.type === "low_stock" &&
+        notification.data?.productId === productId
+    );
 
     // Only create a new notification if one doesn't already exist
-    if (!existingNotification) {
-      const notification = new Notification({
-        type: "low-stock",
+    if (!hasExistingLowStockNotification) {
+      await notificationService.createNotification({
+        type: "low_stock",
         title: `Low Stock Alert: ${product.name}`,
         message: `${product.name} is running low. Current stock: ${product.currentQuantity} ${product.metric}, Minimum level: ${product.minStockLevel} ${product.metric}`,
-        productId: product._id,
-        isRead: false,
+        data: {
+          productId: product._id.toString(),
+          productName: product.name,
+          currentQuantity: product.currentQuantity,
+          minStockLevel: product.minStockLevel,
+          metric: product.metric,
+        },
+        userId: "system",
+        priority: "high",
+        category: "inventory",
       });
-
-      await notification.save();
       return true;
     }
   }
@@ -107,16 +136,14 @@ export async function createSystemNotification(
   title: string,
   message: string
 ): Promise<void> {
-  await connectDB();
-
-  const notification = new Notification({
+  await notificationService.createNotification({
     type: "system",
     title,
     message,
-    isRead: false,
+    userId: "system",
+    priority: "medium",
+    category: "system",
   });
-
-  await notification.save();
 }
 
 /**
@@ -127,15 +154,13 @@ export async function createAlertNotification(
   message: string,
   productId?: string
 ): Promise<void> {
-  await connectDB();
-
-  const notification = new Notification({
-    type: "alert",
+  await notificationService.createNotification({
+    type: "system",
     title,
     message,
-    productId: productId || undefined,
-    isRead: false,
+    data: productId ? { productId } : undefined,
+    userId: "system",
+    priority: "high",
+    category: "alert",
   });
-
-  await notification.save();
 }
