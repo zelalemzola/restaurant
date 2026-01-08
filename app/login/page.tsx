@@ -1,13 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "@/lib/auth-client";
+import { signIn, useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -15,6 +21,14 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
+  const { data: session, isPending } = useSession();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (!isPending && session?.user) {
+      router.push("/dashboard");
+    }
+  }, [session, isPending, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,17 +43,35 @@ export default function LoginPage() {
 
       if (result.error) {
         setError(result.error.message || "Login failed");
+        setIsLoading(false);
       } else if (result.data) {
-        router.push("/dashboard");
+        // Wait a moment for the session to be established
+        setTimeout(() => {
+          window.location.href = "/dashboard";
+        }, 100);
       } else {
         setError("Login failed - please try again");
+        setIsLoading(false);
       }
     } catch (err) {
       setError("An unexpected error occurred");
-    } finally {
       setIsLoading(false);
     }
   };
+
+  // Show loading if checking session
+  if (isPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-lg">Loading...</div>
+      </div>
+    );
+  }
+
+  // Don't render login form if already authenticated
+  if (session?.user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-4">

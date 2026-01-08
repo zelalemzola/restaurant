@@ -9,9 +9,7 @@ export const createProductSchema = z
       .min(1, "Product name is required")
       .max(100, "Product name too long"),
     groupId: z.string().min(1, "Product group is required"),
-    type: z.enum(["stock", "sellable", "combination"] as const, {
-      message: "Product type must be stock, sellable, or combination",
-    }),
+    type: z.enum(["stock", "sellable", "combination"]),
     metric: z.string().min(1, "Metric is required").max(20, "Metric too long"),
     currentQuantity: z
       .number()
@@ -95,7 +93,7 @@ export const createSalesTransactionSchema = z.object({
     "Telebirr",
     "Cash",
     "POS",
-  ] as const, { message: "Invalid payment method" }),
+  ]),
 });
 
 export type CreateSalesTransactionRequest = z.infer<
@@ -105,9 +103,7 @@ export type CreateSalesTransactionRequest = z.infer<
 // Stock transaction validation schema
 export const createStockTransactionSchema = z.object({
   productId: z.string().min(1, "Product ID is required"),
-  type: z.enum(["addition", "usage", "sale", "adjustment"] as const, {
-    message: "Invalid transaction type",
-  }),
+  type: z.enum(["addition", "usage", "sale", "adjustment"]),
   quantity: z.number().refine((val) => val !== 0, "Quantity cannot be zero"),
   reason: z.string().max(200, "Reason too long").optional(),
 });
@@ -123,17 +119,9 @@ export const createCostOperationSchema = z.object({
     .min(1, "Description is required")
     .max(200, "Description too long"),
   amount: z.number().min(0.01, "Amount must be greater than 0"),
-  category: z.enum([
-    "rent",
-    "salary",
-    "utilities",
-    "maintenance",
-    "other",
-  ] as const, { message: "Invalid category" }),
-  type: z.enum(["recurring", "one-time"] as const, {
-    message: "Type must be recurring or one-time",
-  }),
-  recurringPeriod: z.enum(["monthly", "weekly", "yearly"] as const).optional(),
+  category: z.enum(["rent", "salary", "utilities", "maintenance", "other"]),
+  type: z.enum(["recurring", "one-time"]),
+  recurringPeriod: z.enum(["monthly", "weekly", "yearly"]).optional(),
   date: z
     .string()
     .or(z.date())
@@ -151,7 +139,7 @@ export const costCategorySchema = z.enum([
   "utilities",
   "maintenance",
   "other",
-] as const);
+]);
 
 export type CostCategory = z.infer<typeof costCategorySchema>;
 
@@ -161,9 +149,7 @@ export const createUserSchema = z.object({
   name: z.string().min(1, "Name is required").max(100, "Name too long"),
   firstName: z.string().max(50, "First name too long").optional(),
   lastName: z.string().max(50, "Last name too long").optional(),
-  role: z.enum(["admin", "manager", "user"] as const, {
-    message: "Role must be admin, manager, or user",
-  }),
+  role: z.enum(["admin", "manager", "user"]),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
