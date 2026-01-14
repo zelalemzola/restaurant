@@ -37,69 +37,95 @@ interface ApiSuccess<T> {
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
 // Unified user lookup function that handles both Better Auth 'id' and MongoDB '_id' formats
-async function findUserByAnyId(db: any, id: string) {
-  console.log(`Looking up user with ID: ${id}`);
+async function findUserByAnyId(
+  db: any,
+  id: string
+): Promise<{
+  user: any | null;
+  queryField: { id?: string | mongoose.Types.ObjectId; _id?: string | mongoose.Types.ObjectId } | null;
+}> {
+  console.log(`[findUserByAnyId] Looking up user with ID: ${id}, isValidObjectId: ${mongoose.Types.ObjectId.isValid(id)}`);
 
-  let user = null;
-  let queryField = null;
+  let user: any = null;
+  let queryField: { id?: string | mongoose.Types.ObjectId; _id?: string | mongoose.Types.ObjectId } | null = null;
 
-  // 1) Try by Better Auth 'id' field as a string
+  // Strategy 1: Try MongoDB '_id' as ObjectId first (most common case for Better Auth)
+  if (mongoose.Types.ObjectId.isValid(id)) {
+    try {
+      const objectId = new mongoose.Types.ObjectId(id);
+      user = await db.collection("user").findOne({ _id: objectId });
+      if (user) {
+        queryField = { _id: objectId };
+        console.log(`[findUserByAnyId] ✓ Found user by MongoDB '_id' ObjectId: ${id}`);
+        console.log(`[findUserByAnyId] User document keys: ${Object.keys(user).join(", ")}`);
+        return { user, queryField };
+      }
+    } catch (error) {
+      console.log(`[findUserByAnyId] Error searching by '_id' ObjectId: ${error}`);
+    }
+  }
+
+  // Strategy 2: Try Better Auth 'id' field as a string
   try {
     user = await db.collection("user").findOne({ id: id });
     if (user) {
       queryField = { id: id };
-      console.log(`Found user by Better Auth 'id' field: ${id}`);
+      console.log(`[findUserByAnyId] ✓ Found user by Better Auth 'id' string: ${id}`);
+      console.log(`[findUserByAnyId] User document keys: ${Object.keys(user).join(", ")}`);
       return { user, queryField };
     }
   } catch (error) {
-    console.log(`Error searching by 'id' field: ${error}`);
+    console.log(`[findUserByAnyId] Error searching by 'id' string: ${error}`);
   }
 
-  // 2) If ID is a valid ObjectId, try Better Auth 'id' stored as ObjectId
+  // Strategy 3: If ID is a valid ObjectId, try Better Auth 'id' stored as ObjectId
   if (!user && mongoose.Types.ObjectId.isValid(id)) {
     try {
       const objectId = new mongoose.Types.ObjectId(id);
       user = await db.collection("user").findOne({ id: objectId });
       if (user) {
         queryField = { id: objectId };
-        console.log(`Found user by Better Auth 'id' ObjectId field: ${id}`);
+        console.log(`[findUserByAnyId] ✓ Found user by Better Auth 'id' ObjectId: ${id}`);
         return { user, queryField };
       }
     } catch (error) {
-      console.log(`Error searching by 'id' ObjectId field: ${error}`);
+      console.log(`[findUserByAnyId] Error searching by 'id' ObjectId: ${error}`);
     }
   }
 
-  // 3) Try MongoDB '_id' as ObjectId
-  if (!user && mongoose.Types.ObjectId.isValid(id)) {
-    try {
-      const objectId = new mongoose.Types.ObjectId(id);
-      user = await db.collection("user").findOne({ _id: objectId });
-      if (user) {
-        queryField = { _id: objectId };
-        console.log(`Found user by MongoDB '_id' ObjectId field: ${id}`);
-        return { user, queryField };
-      }
-    } catch (error) {
-      console.log(`Error searching by '_id' ObjectId field: ${error}`);
-    }
-  }
-
-  // 4) Finally, try '_id' stored as string (some setups store ids as strings)
+  // Strategy 4: Try '_id' stored as string (fallback)
   if (!user) {
     try {
       user = await db.collection("user").findOne({ _id: id });
       if (user) {
         queryField = { _id: id };
-        console.log(`Found user by MongoDB '_id' string field: ${id}`);
+        console.log(`[findUserByAnyId] ✓ Found user by MongoDB '_id' string: ${id}`);
         return { user, queryField };
       }
     } catch (error) {
-      console.log(`Error searching by '_id' string field: ${error}`);
+      console.log(`[findUserByAnyId] Error searching by '_id' string: ${error}`);
     }
   }
 
-  console.log(`User not found with ID: ${id}`);
+  // Debug: Log sample user documents to understand the structure
+  try {
+    const sampleUsers = await db.collection("user").find({}).limit(2).toArray();
+    console.log(`[findUserByAnyId] Sample user documents structure:`, 
+      sampleUsers.map((u: any) => ({
+        has_id: !!u._id,
+        _id_type: typeof u._id,
+        _id_value: u._id?.toString?.() || u._id,
+        has_id_field: !!u.id,
+        id_type: typeof u.id,
+        id_value: u.id,
+        email: u.email
+      }))
+    );
+  } catch (error) {
+    console.log(`[findUserByAnyId] Error fetching sample users: ${error}`);
+  }
+
+  console.log(`[findUserByAnyId] ✗ User not found with ID: ${id}`);
   return { user: null, queryField: null };
 }
 
@@ -219,7 +245,7 @@ export async function PUT(
     const updatedUser = await db
       .collection("user")
       .findOneAndUpdate(
-        queryField,
+        queryField as any,
         { $set: updateFields },
         { returnDocument: "after" }
       );
@@ -358,7 +384,7 @@ export async function DELETE(
     // Delete the user
     const deletedUser = await db
       .collection("user")
-      .findOneAndDelete(queryField);
+      .findOneAndDelete(queryField as any);
 
     if (!deletedUser || !deletedUser.value) {
       return NextResponse.json(

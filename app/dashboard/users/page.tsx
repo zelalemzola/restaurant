@@ -244,6 +244,11 @@ export default function UsersPage() {
 
       // Always use normalized _id string sent from API
       const userId = editingUser._id || editingUser.id;
+      console.log(`[handleUpdateUser] Attempting to update user with ID: ${userId}`, {
+        editingUser,
+        updateData,
+      });
+      
       const response = await fetch(`/api/users/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -251,6 +256,7 @@ export default function UsersPage() {
       });
 
       const data = await response.json();
+      console.log(`[handleUpdateUser] Response:`, data);
 
       if (data.success) {
         toast({
@@ -282,12 +288,15 @@ export default function UsersPage() {
   const handleDeleteUser = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
 
+    console.log(`[handleDeleteUser] Attempting to delete user with ID: ${userId}`);
+    
     try {
       const response = await fetch(`/api/users/${userId}`, {
         method: "DELETE",
       });
 
       const data = await response.json();
+      console.log(`[handleDeleteUser] Response:`, data);
 
       if (data.success) {
         toast({
@@ -296,6 +305,7 @@ export default function UsersPage() {
         });
         fetchUsers();
       } else {
+        console.error(`[handleDeleteUser] Delete failed:`, data.error);
         toast({
           title: "Error",
           description: data.error.message,
@@ -303,6 +313,7 @@ export default function UsersPage() {
         });
       }
     } catch (error) {
+      console.error(`[handleDeleteUser] Exception:`, error);
       toast({
         title: "Error",
         description: "Failed to delete user",
