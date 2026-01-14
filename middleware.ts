@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionCookie } from "better-auth/cookies";
 
 function hasBetterAuthSession(request: NextRequest) {
-  // Better Auth uses "__Secure-" prefix for cookies on HTTPS in production.
-  // This helper reads the right cookie name(s) based on the request + env.
-  const cookie = getSessionCookie(request, {
-    cookiePrefix: process.env.NODE_ENV === "production" ? "__Secure-" : undefined,
-  });
+  // Use Better Auth's default cookie detection. It already handles the
+  // "__Secure-" prefix in production when using the default config.
+  const cookie = getSessionCookie(request);
   return Boolean(cookie);
 }
 
