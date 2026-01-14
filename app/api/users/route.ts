@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit;
 
-    const [users, total] = await Promise.all([
+    const [rawUsers, total] = await Promise.all([
       mongoose.connection.db
         .collection("user")
         .find(query)
@@ -119,6 +119,18 @@ export async function GET(request: NextRequest) {
         .toArray(),
       mongoose.connection.db.collection("user").countDocuments(query),
     ]);
+
+    // Normalize IDs so the frontend can reliably use _id as a string
+    const users = rawUsers.map((u: any) => {
+      const stringId =
+        typeof u._id === "string" ? u._id : u._id?.toString?.() ?? undefined;
+      return {
+        ...u,
+        _id: stringId,
+        // Ensure there's also a plain string id field; prefer Better Auth id if present
+        id: typeof u.id === "string" ? u.id : stringId,
+      };
+    });
 
     const response: ApiResponse<{
       users: any[];

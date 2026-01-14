@@ -242,8 +242,8 @@ export default function UsersPage() {
         delete updateData.password;
       }
 
-      // Use the correct ID field - Better Auth uses 'id', fallback to '_id'
-      const userId = editingUser.id || editingUser._id;
+      // Always use normalized _id string sent from API
+      const userId = editingUser._id || editingUser.id;
       const response = await fetch(`/api/users/${userId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -556,8 +556,8 @@ export default function UsersPage() {
               </TableHeader>
               <TableBody>
                 {users.map((user) => {
-                  // Use the correct ID field - Better Auth uses 'id', fallback to '_id'
-                  const userId = user.id || user._id;
+                  // Use normalized _id string sent from API
+                  const userId = user._id || user.id;
                   return (
                     <TableRow key={userId}>
                       <TableCell className="font-medium">

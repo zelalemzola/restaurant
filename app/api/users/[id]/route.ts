@@ -43,7 +43,7 @@ async function findUserByAnyId(db: any, id: string) {
   let user = null;
   let queryField = null;
 
-  // First try by Better Auth 'id' field (if it exists)
+  // 1) Try by Better Auth 'id' field as a string
   try {
     user = await db.collection("user").findOne({ id: id });
     if (user) {
@@ -55,18 +55,47 @@ async function findUserByAnyId(db: any, id: string) {
     console.log(`Error searching by 'id' field: ${error}`);
   }
 
-  // If not found and ID is a valid ObjectId, try by MongoDB '_id' field
+  // 2) If ID is a valid ObjectId, try Better Auth 'id' stored as ObjectId
+  if (!user && mongoose.Types.ObjectId.isValid(id)) {
+    try {
+      const objectId = new mongoose.Types.ObjectId(id);
+      user = await db.collection("user").findOne({ id: objectId });
+      if (user) {
+        queryField = { id: objectId };
+        console.log(`Found user by Better Auth 'id' ObjectId field: ${id}`);
+        return { user, queryField };
+      }
+    } catch (error) {
+      console.log(`Error searching by 'id' ObjectId field: ${error}`);
+    }
+  }
+
+  // 3) Try MongoDB '_id' as ObjectId
   if (!user && mongoose.Types.ObjectId.isValid(id)) {
     try {
       const objectId = new mongoose.Types.ObjectId(id);
       user = await db.collection("user").findOne({ _id: objectId });
       if (user) {
         queryField = { _id: objectId };
-        console.log(`Found user by MongoDB '_id' field: ${id}`);
+        console.log(`Found user by MongoDB '_id' ObjectId field: ${id}`);
         return { user, queryField };
       }
     } catch (error) {
-      console.log(`Error searching by '_id' field: ${error}`);
+      console.log(`Error searching by '_id' ObjectId field: ${error}`);
+    }
+  }
+
+  // 4) Finally, try '_id' stored as string (some setups store ids as strings)
+  if (!user) {
+    try {
+      user = await db.collection("user").findOne({ _id: id });
+      if (user) {
+        queryField = { _id: id };
+        console.log(`Found user by MongoDB '_id' string field: ${id}`);
+        return { user, queryField };
+      }
+    } catch (error) {
+      console.log(`Error searching by '_id' string field: ${error}`);
     }
   }
 

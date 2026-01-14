@@ -12,6 +12,7 @@ import { AuthProvider } from "@/lib/providers/AuthProvider";
 import { NavigationProvider } from "@/lib/providers/NavigationProvider";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AppShell } from "@/components/layout/AppShell";
 
 // const geistSans = Geist({
 //   variable: "--font-geist-sans",
@@ -47,7 +48,7 @@ export default function RootLayout({
           <StoreProvider>
             <AuthProvider>
               <NavigationProvider>
-                {children}
+                <AppShell>{children}</AppShell>
                 <Toaster />
               </NavigationProvider>
             </AuthProvider>

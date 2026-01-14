@@ -2,14 +2,12 @@
 
 import { useAuth } from "@/lib/providers/AuthProvider";
 import { useRealTimeUpdates } from "@/lib/hooks/useRealTimeUpdates";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { DashboardHeader } from "@/components/ui/dashboard-header";
 import { MetricCard } from "@/components/ui/metric-card";
 import { RecentTransactions } from "@/components/dashboard/recent-transactions";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 import { LowStockSection } from "@/components/dashboard/LowStockSection";
 import { LoadingPage, LoadingCard } from "@/components/ui/loading";
-import { ErrorBoundary } from "@/components/ui/error-boundary";
 import {
   ResponsiveContainer,
   ResponsiveGrid,
@@ -54,9 +52,7 @@ export default function DashboardPage() {
   const dashboard = dashboardData?.success ? dashboardData.data : null;
 
   return (
-    <ErrorBoundary>
-      <AppLayout>
-        <ResponsiveContainer size="full" padding="md">
+    <ResponsiveContainer size="full" padding="md">
           <DashboardHeader
             title="Restaurant ERP Dashboard"
             description={`Welcome back, ${
@@ -294,7 +290,5 @@ export default function DashboardPage() {
             </div>
           )}
         </ResponsiveContainer>
-      </AppLayout>
-    </ErrorBoundary>
   );
 }

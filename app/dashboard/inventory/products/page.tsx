@@ -14,9 +14,7 @@ import {
   Tag,
   Archive,
 } from "lucide-react";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { LoadingCard } from "@/components/ui/loading";
-import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -465,25 +463,19 @@ export default function ProductsPage() {
 
   if (productsError) {
     return (
-      <ErrorBoundary>
-        <AppLayout>
-          <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-destructive">
-                  Error loading products. Please try again.
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </AppLayout>
-      </ErrorBoundary>
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-center text-destructive">
+              Error loading products. Please try again.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
-    <ErrorBoundary>
-      <AppLayout>
         <div className="w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
           {/* Header */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -900,7 +892,5 @@ export default function ProductsPage() {
             </DialogContent>
           </Dialog>
         </div>
-      </AppLayout>
-    </ErrorBoundary>
   );
 }
