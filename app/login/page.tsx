@@ -26,7 +26,7 @@ export default function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!isPending && session?.user) {
-      router.push("/dashboard");
+      router.replace("/dashboard");
     }
   }, [session, isPending, router]);
 
@@ -70,7 +70,11 @@ export default function LoginPage() {
 
   // Don't render login form if already authenticated
   if (session?.user) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-lg">Redirecting...</div>
+      </div>
+    );
   }
 
   return (
