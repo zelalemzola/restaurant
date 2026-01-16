@@ -85,12 +85,12 @@ const navigation: NavigationItem[] = [
     icon: BarChart3,
     allowedRoles: ["admin", "manager"], // Only admin and manager can access analytics
   },
-  {
-    name: "Notifications",
-    href: "/dashboard/notifications",
-    icon: Bell,
-    allowedRoles: ["admin", "manager", "user"], // All roles can access notifications
-  },
+  // {
+  //   name: "Notifications",
+  //   href: "/dashboard/notifications",
+  //   icon: Bell,
+  //   allowedRoles: ["admin", "manager", "user"], // All roles can access notifications
+  // },
   {
     name: "Users",
     href: "/dashboard/users",
@@ -105,12 +105,12 @@ const navigation: NavigationItem[] = [
     permission: "audit.read",
     allowedRoles: ["admin", "manager"], // Only admin and manager can access audit
   },
-  {
-    name: "System",
-    href: "/system",
-    icon: Settings,
-    allowedRoles: ["admin"], // Only admin can access system settings
-  },
+  // {
+  //   name: "System",
+  //   href: "/system",
+  //   icon: Settings,
+  //   allowedRoles: ["admin"], // Only admin can access system settings
+  // },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {

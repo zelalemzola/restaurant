@@ -40,51 +40,54 @@ export default function CostsPage() {
     0
   );
 
-  const { data: monthlyData } = useGetCostOperationsQuery({
-    startDate: startOfMonth.toISOString().split("T")[0],
-    endDate: endOfMonth.toISOString().split("T")[0],
-    limit: 1000, // Get all for summary
-  });
+  const { data: monthlyData, refetch: refetchMonthlyData } =
+    useGetCostOperationsQuery({
+      startDate: startOfMonth.toISOString().split("T")[0],
+      endDate: endOfMonth.toISOString().split("T")[0],
+      limit: 1000, // Get all for summary
+    });
 
-  const { data: recurringData } = useGetCostOperationsQuery({
-    type: "recurring",
-    limit: 1000, // Get all recurring costs
-  });
+  const { data: recurringData, refetch: refetchRecurringData } =
+    useGetCostOperationsQuery({
+      type: "recurring",
+      limit: 1000, // Get all recurring costs
+    });
 
   // Fetch cost expenses summary
   const [costExpensesSummary, setCostExpensesSummary] = useState<any>(null);
   const [costExpensesLoading, setCostExpensesLoading] = useState(true);
   const [costExpensesError, setCostExpensesError] = useState<string>("");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const fetchCostExpensesSummary = async () => {
+    try {
+      setCostExpensesLoading(true);
+      setCostExpensesError("");
+      const params = new URLSearchParams({
+        startDate: startOfMonth.toISOString().split("T")[0],
+        endDate: endOfMonth.toISOString().split("T")[0],
+      });
+      const response = await fetch(`/api/cost-expenses/summary?${params}`);
+      const data = await response.json();
+      if (data.success) {
+        setCostExpensesSummary(data.data);
+        console.log("Cost expenses summary:", data.data); // Debug log
+      } else {
+        setCostExpensesError(
+          data.error?.message || "Failed to fetch cost expenses"
+        );
+      }
+    } catch (error) {
+      console.error("Failed to fetch cost expenses summary:", error);
+      setCostExpensesError("Failed to fetch cost expenses summary");
+    } finally {
+      setCostExpensesLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchCostExpensesSummary = async () => {
-      try {
-        setCostExpensesLoading(true);
-        setCostExpensesError("");
-        const params = new URLSearchParams({
-          startDate: startOfMonth.toISOString().split("T")[0],
-          endDate: endOfMonth.toISOString().split("T")[0],
-        });
-        const response = await fetch(`/api/cost-expenses/summary?${params}`);
-        const data = await response.json();
-        if (data.success) {
-          setCostExpensesSummary(data.data);
-          console.log("Cost expenses summary:", data.data); // Debug log
-        } else {
-          setCostExpensesError(
-            data.error?.message || "Failed to fetch cost expenses"
-          );
-        }
-      } catch (error) {
-        console.error("Failed to fetch cost expenses summary:", error);
-        setCostExpensesError("Failed to fetch cost expenses summary");
-      } finally {
-        setCostExpensesLoading(false);
-      }
-    };
-
     fetchCostExpensesSummary();
-  }, [startOfMonth, endOfMonth]);
+  }, [startOfMonth, endOfMonth, refreshTrigger]);
 
   const monthlyCosts = monthlyData?.success
     ? monthlyData.data.costOperations
@@ -106,6 +109,10 @@ export default function CostsPage() {
   const handleFormSuccess = () => {
     setIsFormOpen(false);
     setEditingCost(undefined);
+    // Refetch all data immediately after adding/updating a cost
+    refetchMonthlyData();
+    refetchRecurringData();
+    setRefreshTrigger((prev) => prev + 1); // Trigger cost expenses summary refetch
   };
 
   const handleFormCancel = () => {
@@ -116,8 +123,16 @@ export default function CostsPage() {
   // Calculate summary statistics
   const monthlyTotal = monthlyCosts.reduce((sum, cost) => sum + cost.amount, 0);
   const inventoryExpensesTotal =
+    costExpensesSummary?.totalExpenses?.totalInventoryExpenses || 0;
+  const operationalExpensesTotal =
+    costExpensesSummary?.totalExpenses?.totalOperationalExpenses || 0;
+  const overheadExpensesTotal =
+    costExpensesSummary?.totalExpenses?.totalOverheadExpenses || 0;
+
+  // The cost-expenses summary already includes CostOperations in its totals,
+  // so we use grandTotal which has everything combined
+  const totalMonthlyWithInventory =
     costExpensesSummary?.totalExpenses?.grandTotal || 0;
-  const totalMonthlyWithInventory = monthlyTotal + inventoryExpensesTotal;
 
   const recurringMonthlyTotal = recurringCosts
     .filter((cost) => cost.recurringPeriod === "monthly")
@@ -168,20 +183,23 @@ export default function CostsPage() {
               })}
             </p>
             <div className="text-xs text-muted-foreground mt-1 space-y-1">
-              {monthlyTotal > 0 && (
-                <p>Operations: ${monthlyTotal.toFixed(2)}</p>
-              )}
               {inventoryExpensesTotal > 0 && (
                 <p>Inventory: ${inventoryExpensesTotal.toFixed(2)}</p>
               )}
-              {costExpensesLoading && <p>Loading inventory costs...</p>}
+              {operationalExpensesTotal > 0 && (
+                <p>Operational: ${operationalExpensesTotal.toFixed(2)}</p>
+              )}
+              {overheadExpensesTotal > 0 && (
+                <p>Overhead: ${overheadExpensesTotal.toFixed(2)}</p>
+              )}
+              {costExpensesLoading && <p>Loading cost expenses...</p>}
               {costExpensesError && (
                 <p className="text-red-500">Error: {costExpensesError}</p>
               )}
               {!costExpensesLoading &&
                 !costExpensesError &&
-                inventoryExpensesTotal === 0 && (
-                  <p>No inventory costs this month</p>
+                totalMonthlyWithInventory === 0 && (
+                  <p>No cost expenses this month</p>
                 )}
             </div>
           </CardContent>
@@ -246,8 +264,9 @@ export default function CostsPage() {
           <CardContent>
             <div className="text-2xl font-bold">
               $
-              {costExpensesSummary?.totalExpenses?.grandTotal?.toFixed(2) ||
-                "0.00"}
+              {costExpensesSummary?.totalExpenses?.totalInventoryExpenses?.toFixed(
+                2
+              ) || "0.00"}
             </div>
             <p className="text-xs text-muted-foreground">
               Automatic inventory cost tracking
@@ -297,12 +316,6 @@ export default function CostsPage() {
             </div>
             <div className="mt-4 text-center">
               <div className="flex gap-2 justify-center">
-                <Button
-                  variant="outline"
-                  onClick={() => window.open("/cost-expenses", "_blank")}
-                >
-                  View Detailed Cost Expenses
-                </Button>
                 <Button
                   variant="outline"
                   onClick={() => window.open("/profit-margins", "_blank")}

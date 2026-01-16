@@ -52,12 +52,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId") || "system";
     const unreadOnly = searchParams.get("unreadOnly") === "true";
+    const type = searchParams.get("type"); // Add type filter
     const category = searchParams.get("category");
     const limit = parseInt(searchParams.get("limit") || "50");
     const skip = parseInt(searchParams.get("skip") || "0");
 
     const notifications = await notificationService.getNotifications(userId, {
       unreadOnly,
+      type: type || undefined, // Pass type filter
       category: category || undefined,
       limit,
       skip,

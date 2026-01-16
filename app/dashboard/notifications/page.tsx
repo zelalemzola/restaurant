@@ -25,6 +25,7 @@ import Link from "next/link";
 export default function NotificationsPage() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("all");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Fetch notifications based on active tab
   const {
@@ -58,6 +59,43 @@ export default function NotificationsPage() {
     ? notificationsResponse.data.unreadCount ||
       notifications.filter((n) => n && !n.read).length
     : 0;
+
+  const handleRefreshNotifications = async () => {
+    try {
+      setIsRefreshing(true);
+
+      // Trigger low stock check
+      const response = await fetch("/api/notifications/check-low-stock", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        toast({
+          title: "Notifications Refreshed",
+          description: `Created ${data.data.notificationsCreated} new low stock alerts`,
+        });
+
+        // Refetch notifications
+        await refetch();
+      } else {
+        toast({
+          title: "Refresh Failed",
+          description: "Failed to check for low stock items",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to refresh notifications",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const handleMarkAsRead = async (id: string, read: boolean) => {
     try {
@@ -182,6 +220,14 @@ export default function NotificationsPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleRefreshNotifications}
+            disabled={isRefreshing}
+          >
+            <Bell className="h-4 w-4 mr-2" />
+            {isRefreshing ? "Checking..." : "Check for Updates"}
+          </Button>
           <Link href="/dashboard">
             <Button variant="outline">Back to Dashboard</Button>
           </Link>

@@ -72,8 +72,8 @@ async function getDashboardData() {
       .lean()
       .exec(),
 
-    // Unread notifications count
-    Notification.countDocuments({ read: false }).exec(),
+    // Unread notifications count (for system user)
+    Notification.countDocuments({ read: false, userId: "system" }).exec(),
 
     // Total products count
     Product.countDocuments().exec(),

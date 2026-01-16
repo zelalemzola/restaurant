@@ -217,6 +217,7 @@ class NotificationService {
     userId: string,
     options: {
       unreadOnly?: boolean;
+      type?: string;
       category?: string;
       limit?: number;
       skip?: number;
@@ -229,6 +230,10 @@ class NotificationService {
 
       if (options.unreadOnly) {
         query.read = false;
+      }
+
+      if (options.type) {
+        query.type = options.type;
       }
 
       if (options.category) {
